@@ -327,7 +327,7 @@ h1 { font-size: clamp(1.6rem, 7.4vw, 2.1rem); font-weight: 760; letter-spacing: 
 .sched li { align-items: stretch; position: relative; padding: 10px 6px 10px 16px; margin: 0 -6px; border-radius: 18px; border-top-color: transparent; }
 .sched li + li { border-top: 0; }
 .sched li::before { content: ""; position: absolute; left: 5px; top: 12px; bottom: 12px; width: 4px; border-radius: 4px; background: var(--ev, var(--accent)); box-shadow: 0 0 10px -1px var(--ev, var(--accent)); }
-.sched li.now { background: var(--now); box-shadow: var(--inset-rim); }
+.sched li.now { background: color-mix(in srgb, var(--good) 15%, transparent); box-shadow: var(--inset-rim), inset 0 0 0 1px color-mix(in srgb, var(--good) 28%, transparent); }
 .sched li.past { opacity: 0.5; }
 .sched li.empty::before { display: none; }
 .s-time { width: 4.6rem; flex: none; font-size: 0.88rem; color: var(--muted); padding-top: 1px; font-variant-numeric: tabular-nums; }
@@ -585,3 +585,8 @@ dialog.closing::backdrop { animation: fadeOut 0.22s both; }
 .week.grow .wk-day { animation: popIn 0.7s var(--spring) both; animation-delay: calc(var(--i, 0) * 45ms); }
 .week.swap-l .wk-day { animation: slideL 0.7s var(--ease) both; animation-delay: calc(var(--i, 0) * 35ms); }
 .week.swap-r .wk-day { animation: slideR 0.7s var(--ease) both; animation-delay: calc(var(--i, 0) * 35ms); }
+
+/* Event colours: one meaning everywhere */
+.tone-next { --ev: var(--accent); }
+.tone-now { --ev: var(--good); }
+.tone-past { --ev: var(--line-strong); }

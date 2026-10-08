@@ -90,11 +90,11 @@ function closeDlg(d) {
 }
 for (const d of document.querySelectorAll('dialog')) d.addEventListener('click', (e) => { if (e.target === d) closeDlg(d); });
 
-// Hue from a string, so each event keeps a stable colour.
-function evColor(title) {
-  let n = 0;
-  for (const ch of title) n = (n * 31 + ch.charCodeAt(0)) % 360;
-  return `hsl(${n} 68% 58%)`;
+// Event colour means something: blue = coming up, green = happening now, grey = finished.
+function evTone(ev, s, e, now = Date.now()) {
+  if (Math.max(e, s + 1) <= now) return 'tone-past';
+  if (!ev.allDay && s <= now) return 'tone-now';
+  return 'tone-next';
 }
 
 /* ---------- state ---------- */
@@ -973,7 +973,7 @@ W.next = {
     const upcoming = todays.find((x) => x.s > now);
     const pick = current || upcoming;
     if (pick) {
-      body.append(h('div', { class: 'next', style: `--ev:${evColor(pick.ev.title)}` },
+      body.append(h('div', { class: `next ${current ? 'tone-now' : 'tone-next'}` },
         h('p', { class: 'next-when' }, current ? h('span', { class: 'live-dot' }) : null, current ? 'Happening now' : `In ${rel(pick.s - now)}`),
         h('p', { class: 'next-title' }, pick.ev.title),
         h('p', { class: 'next-time' }, current ? `Until ${fmtTime(pick.e)}` : `${fmtTime(pick.s)} – ${fmtTime(pick.e)}`)));
@@ -1045,7 +1045,7 @@ W.schedule = {
       const wrap = h('div', { class: `week${swap || (wasWeek ? '' : ' grow')}` });
       for (let i = 0; i < 7; i++) {
         const d = addDays(viewDay, i), items = eventsOn(d), isToday = dayKey(d) === dayKey(new Date());
-        const rows = items.length ? items.map(({ ev, s, e }) => h('div', { class: `wk-ev${!ev.allDay && Math.max(e, s + 1) <= now ? ' past' : ''}`, style: `--ev:${evColor(ev.title)}` },
+        const rows = items.length ? items.map(({ ev, s, e }) => h('div', { class: `wk-ev ${evTone(ev, s, e, now)}${!ev.allDay && Math.max(e, s + 1) <= now ? ' past' : ''}` },
           h('span', { class: 'wk-time' }, ev.allDay ? 'All day' : fmtTime(s)), h('span', { class: 'wk-title' }, ev.title)))
           : [h('p', { class: 'wk-free' }, 'Free')];
         wrap.append(h('section', { class: `wk-day${isToday ? ' today' : ''}`, style: `--i:${i}` },
@@ -1071,7 +1071,7 @@ W.schedule = {
       let sub = null;
       if (isNow) sub = h('div', { class: 's-sub' }, h('span', { class: 'live-dot' }), `Now · until ${fmtTime(e)}`);
       else if (!ev.allDay && e > s) sub = h('div', { class: 's-sub' }, `until ${fmtTime(e)}`);
-      list.append(h('li', { class: `${isNow ? 'now' : ''} ${isPast ? 'past' : ''}`.trim(), style: `--i:${i};--ev:${evColor(ev.title)}` },
+      list.append(h('li', { class: `${evTone(ev, s, e, now)}${isNow ? ' now' : ''}${isPast ? ' past' : ''}`, style: `--i:${i}` },
         h('div', { class: 's-time' }, ev.allDay ? 'All day' : fmtTime(s)),
         h('div', { class: 's-body' }, h('div', { class: 's-title' }, ev.title), sub),
         h('button', { class: 'x-btn', 'aria-label': `Remove ${ev.title}`, onclick: () => removeEvent(ev) }, ic('x'))));
