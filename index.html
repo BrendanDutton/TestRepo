@@ -24,7 +24,7 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="aurora" aria-hidden="true"></div>
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
 
   <!-- Icon sprite -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -192,6 +192,17 @@
       </div>
       <p class="muted small-text">Everything you add stays on this device.</p>
       <div class="actions"><button type="button" data-close>Close</button></div>
+    </div>
+  </dialog>
+
+  <!-- A widget opened from another one (when it isn't on your screen) -->
+  <dialog id="widget-sheet">
+    <div class="sheet">
+      <div id="ws-body"></div>
+      <div class="actions">
+        <button type="button" id="ws-add"><svg class="ic sm"><use href="#i-plus"/></svg>Add to my screen</button>
+        <button type="button" data-close>Close</button>
+      </div>
     </div>
   </dialog>
 

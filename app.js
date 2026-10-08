@@ -1292,6 +1292,8 @@ W.dayprog = {
   },
 };
 
+// Tapping these cards takes you to a related widget.
+const LINKS = { next: 'schedule', progress: 'todo' };
 const ORDER = ['weather', 'next', 'progress', 'schedule', 'todo', 'hourly', 'daily', 'habits', 'air', 'sun', 'countdown', 'focus', 'clocks', 'notes', 'dayprog', 'week'];
 state.layout = state.layout.filter((i) => W[i.type] && W[i.type].sizes.includes(i.size));
 const hasWidget = (type) => state.layout.some((i) => i.type === type);
@@ -1317,8 +1319,18 @@ function widgetEl(item) {
       ctl('x', 'Remove', () => removeWidget(item.id), 'w-remove'))),
     h('header', { class: 'w-head' },
       h('h2', {}, h('span', { class: `chip sm ${def.chip || ''}` }, ic(def.icon)), h('span', { class: 'w-title' }, def.name)),
-      h('div', { class: 'w-actions' }, ...(def.actions ? def.actions(item) : []))),
+      h('div', { class: 'w-actions' }, ...(def.actions ? def.actions(item) : []), LINKS[item.type] ? h('span', { class: 'go-hint', 'aria-hidden': 'true' }, ic('right')) : null)),
     h('div', { class: 'w-body' }));
+  if (LINKS[item.type]) {
+    const target = LINKS[item.type];
+    sec.classList.add('tap-card');
+    sec.setAttribute('role', 'link');
+    sec.tabIndex = 0;
+    sec.setAttribute('aria-label', `${def.name}. Opens ${W[target].name}`);
+    const go = (e) => { if (editing || e.target.closest('.w-edit, input, textarea, a, button:not(.tap-card)')) return; goToWidget(target); };
+    sec.addEventListener('click', go);
+    sec.addEventListener('keydown', (e) => { if (e.target === sec && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); go(e); } });
+  }
   mountWidget(sec, item);
   return sec;
 }
@@ -1345,7 +1357,58 @@ function refresh(...types) {
     const sec = nodeOf(item.id);
     if (sec) updateWidget(sec, item);
   }
+  if (sheetItem && types.includes(sheetItem.type)) updateWidget($('#ws-body .widget'), sheetItem);
 }
+
+/* ---------- moving between widgets ---------- */
+let sheetItem = null;
+let glide = null;
+// Our own eased scroll (smoother and more consistent than the browser's). A touch cancels it.
+function smoothScrollTo(y) {
+  const max = document.documentElement.scrollHeight - innerHeight;
+  const to = Math.max(0, Math.min(max, y)), from = scrollY, dist = to - from;
+  cancelAnimationFrame(glide);
+  if (reduceMotion.matches || Math.abs(dist) < 2) { scrollTo(0, to); return Promise.resolve(); }
+  const dur = Math.min(950, 420 + Math.abs(dist) * 0.32);
+  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    const stop = () => { cancelAnimationFrame(glide); removeEventListener('touchstart', stop); removeEventListener('wheel', stop); resolve(); };
+    addEventListener('touchstart', stop, { passive: true, once: true });
+    addEventListener('wheel', stop, { passive: true, once: true });
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / dur);
+      scrollTo(0, from + dist * ease(p));
+      if (p < 1) glide = requestAnimationFrame(step); else stop();
+    };
+    glide = requestAnimationFrame(step);
+  });
+}
+// A springy "here I am" bounce plus a soft glow.
+function bounce(el) {
+  if (reduceMotion.matches) return;
+  el.animate([{ scale: 1 }, { scale: 1.045, offset: 0.28 }, { scale: 0.985, offset: 0.55 }, { scale: 1.012, offset: 0.78 }, { scale: 1 }], { duration: 900, easing: 'cubic-bezier(.3,.7,.4,1)' });
+  el.classList.remove('w-flash'); void el.offsetWidth; el.classList.add('w-flash');
+  setTimeout(() => el.classList.remove('w-flash'), 1500);
+}
+function goToWidget(type) {
+  buzz(10);
+  const item = state.layout.find((i) => i.type === type);
+  if (!item) { openWidgetSheet(type); return; }
+  const el = nodeOf(item.id);
+  const top = el.getBoundingClientRect().top + scrollY - 14;
+  smoothScrollTo(top).then(() => bounce(el));
+}
+// Not on your screen? Show it in a sheet, with a shortcut to add it.
+function openWidgetSheet(type) {
+  sheetItem = { id: `sheet-${type}`, type, size: 'full' };
+  const el = widgetEl(sheetItem);
+  el.classList.add('in-sheet');
+  $('#ws-body').replaceChildren(el);
+  $('#ws-add').onclick = () => { closeDlg($('#widget-sheet')); addWidget(type); };
+  $('#widget-sheet').showModal();
+}
+$('#widget-sheet').addEventListener('close', () => { sheetItem = null; $('#ws-body').replaceChildren(); });
 function renderGrid(animate = false) {
   grid.replaceChildren(...state.layout.map(widgetEl));
   [...grid.children].forEach((el, i) => {
