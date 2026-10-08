@@ -5,13 +5,31 @@ It's a plain static web app (installable PWA) with no build step, no accounts an
 
 ## What it shows
 
-- **Stats row**: task completion ring, events today, current temperature, time until your next event.
-- **Weather**: current conditions, high/low, rain chance, wind, humidity, sunrise/sunset and the next 8 hours (via [Open-Meteo](https://open-meteo.com)). Uses your location or a city search; works from cache offline.
-- **Schedule**: browse day by day. Add events by hand or import a `.ics` file.
-- **To-do**: add, tick off, delete. Tasks you finish disappear the next day.
-- **Last 7 days**: tasks completed per day.
+The top of the screen sums up your day in one sentence, e.g. *"Cloudy and 13°. You've got 1 event and 3 tasks left today."*
+Below that is a stack of **widgets** you choose. Tap **Customize** in the dock to add, remove, drag to reorder or resize
+(full or half width) any widget, or start from a ready-made layout (Essentials, Planner, Weather, Everything).
 
-Everything you enter is stored in the browser's `localStorage` on your device only.
+| Widget | What it does |
+|---|---|
+| Weather | Temperature, conditions, feels-like, high/low, rain and wind |
+| Next hours | Hour-by-hour temperature and chance of rain |
+| 7-day forecast | Highs, lows and rain for the week |
+| Up next | Your next event and how long until it starts |
+| Tasks done | How much of today's to-do list is finished |
+| Calendar | Today's events (and other days), synced from Google Calendar |
+| To-do | Your task list |
+| Habits | Tick off daily habits, see the last 7 days and your streak |
+| Air & UV | Air quality index and UV strength |
+| Sunrise & sunset | Daylight times and how much daylight is left |
+| Countdowns | Days until birthdays, trips or deadlines |
+| Focus timer | 25-minute focus sessions with 5-minute breaks |
+| World clocks | The time in other cities |
+| Time left | How far through the day, week, month and year you are |
+| Notes | A quick scratchpad |
+| This week | Tasks completed per day |
+
+The **+** button in the dock quickly adds a task or event. **Settings** (from + or Customize) has °C/°F, light/dark/auto,
+location, Google Calendar sync and calendar file import. Everything you enter is stored in the browser on your device only.
 
 ## Get it on your phone
 

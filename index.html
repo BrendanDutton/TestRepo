@@ -4,9 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>My Day</title>
-  <meta name="description" content="Daily dashboard: to-dos, calendar and weather at a glance.">
-  <meta name="theme-color" content="#e9ecf8" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#090b13" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="Your day at a glance: weather, calendar, to-dos and more, the way you want it.">
+  <meta name="theme-color" content="#e9ecf8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="My Day">
@@ -14,6 +13,14 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <script>
+    // Pick light/dark before the first paint so there's no flash.
+    try {
+      var pref = (JSON.parse(localStorage.getItem('my-day.v1') || '{}').theme) || 'auto';
+      var dark = pref === 'dark' || (pref === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    } catch (e) { document.documentElement.dataset.theme = 'light'; }
+  </script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -27,9 +34,12 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
     <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
     <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 19h10a4.5 4.5 0 0 0 .6-9 6 6 0 0 0-11.6 1.6A3.7 3.7 0 0 0 7 19z"/></symbol>
     <symbol id="i-bars" viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></symbol>
     <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
@@ -37,25 +47,47 @@
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></symbol>
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></symbol>
+    <symbol id="i-pie" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 6-14 15-14 0 9-6 15-14 15-.6 0-1-.4-1-1z"/><path d="M5 19l7-7"/></symbol>
+    <symbol id="i-sunrise" viewBox="0 0 24 24"><path d="M3 18h18M6 18a6 6 0 0 1 12 0M12 4v4M4.9 9.9l1.4 1.4M19.1 9.9l-1.4 1.4"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5z"/><path d="M15 4v4h4M8 12h8M8 16h6"/></symbol>
+    <symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></symbol>
+    <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></symbol>
+    <symbol id="i-resize" viewBox="0 0 24 24"><path d="M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.5" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
   </svg>
 
   <main class="app">
-    <!-- Hero -->
-    <header class="hero intro" id="hero" data-sky="default" style="--i:0">
-      <div class="hero-top">
+    <!-- Header: greeting, date and a one-line summary of the day -->
+    <header class="top intro" style="--i:0">
+      <div class="top-row">
         <p class="greeting" id="greeting"></p>
-        <button class="glass-btn" id="refresh" aria-label="Refresh weather and calendar" title="Refresh">
-          <svg class="ic"><use href="#i-refresh"/></svg>
-        </button>
+        <button class="round-btn" id="refresh" aria-label="Refresh weather and calendar" title="Refresh"><svg class="ic"><use href="#i-refresh"/></svg></button>
       </div>
       <h1 id="today-label"></h1>
-      <div class="hero-wx">
-        <div class="hero-icon" id="hero-icon" aria-hidden="true">⛅</div>
-        <div class="hero-temp" id="hero-temp">--°</div>
-        <div class="hero-desc" id="hero-desc">Loading weather…</div>
-        <div class="hero-place" id="hero-place"></div>
-      </div>
+      <p class="summary" id="summary"></p>
     </header>
+
+    <!-- Customize bar (only while customizing) -->
+    <div class="editbar" id="editbar" hidden>
+      <div class="editbar-text">
+        <h2>Customize your screen</h2>
+        <p class="muted small-text">Drag <svg class="ic sm inline"><use href="#i-grip"/></svg> or use the arrows to move a widget. Tap <svg class="ic sm inline"><use href="#i-resize"/></svg> to change its size.</p>
+      </div>
+      <div class="editbar-actions">
+        <button class="primary" id="edit-add"><svg class="ic sm"><use href="#i-plus"/></svg>Add widget</button>
+        <button id="edit-settings"><svg class="ic sm"><use href="#i-gear"/></svg>Settings</button>
+        <button id="edit-done">Done</button>
+      </div>
+    </div>
 
     <div class="install" id="install" hidden>
       <span class="chip sm"><svg class="ic"><use href="#i-download"/></svg></span>
@@ -64,101 +96,108 @@
       <button class="x-btn" id="install-dismiss" aria-label="Dismiss"><svg class="ic"><use href="#i-x"/></svg></button>
     </div>
 
-    <!-- Stats -->
-    <section class="stats" id="stats" aria-label="Today at a glance">
-      <div class="tile intro" style="--i:1">
-        <div class="tile-top">
-          <div class="ring-wrap">
-            <svg viewBox="0 0 64 64" class="ring" aria-hidden="true">
-              <circle cx="32" cy="32" r="26" class="ring-bg"></circle>
-              <circle cx="32" cy="32" r="26" class="ring-fg" id="ring-fg" stroke-dasharray="0 163.36"></circle>
-            </svg>
-            <span class="ring-text" id="stat-progress">0%</span>
-          </div>
-          <span class="tile-cap">Tasks</span>
-        </div>
-        <div class="tile-value" id="stat-tasks-value">&ndash;</div>
-        <div class="tile-label" id="stat-tasks">No tasks yet</div>
-      </div>
-      <div class="tile intro" style="--i:2">
-        <div class="tile-top">
-          <span class="chip c-violet"><svg class="ic"><use href="#i-cal"/></svg></span>
-          <span class="tile-cap">Events</span>
-        </div>
-        <div class="tile-value" id="stat-events">0</div>
-        <div class="tile-label">on today</div>
-      </div>
-      <div class="tile intro" style="--i:3">
-        <div class="tile-top">
-          <span class="chip c-green"><svg class="ic"><use href="#i-clock"/></svg></span>
-          <span class="tile-cap">Next up</span>
-        </div>
-        <div class="tile-value" id="stat-next">&ndash;</div>
-        <div class="tile-label" id="stat-next-label">next up</div>
-      </div>
-      <div class="tile intro" style="--i:4">
-        <div class="tile-top">
-          <span class="chip c-amber"><svg class="ic"><use href="#i-drop"/></svg></span>
-          <span class="tile-cap">Range</span>
-        </div>
-        <div class="tile-value" id="stat-temp">&ndash;</div>
-        <div class="tile-label" id="stat-temp-label">weather</div>
-      </div>
-    </section>
+    <div class="tip" id="tip" hidden>
+      <span class="chip sm"><svg class="ic"><use href="#i-sliders"/></svg></span>
+      <p><b>Make it yours.</b> Tap <b>Customize</b> at the bottom to add, remove or rearrange what you see.</p>
+      <button class="x-btn" id="tip-close" aria-label="Got it"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
 
-    <!-- Weather -->
-    <section class="card reveal" id="weather-card" aria-labelledby="weather-h" style="--i:5">
-      <div class="card-head">
-        <h2 id="weather-h"><span class="chip sm c-amber"><svg class="ic"><use href="#i-sun"/></svg></span>Forecast</h2>
-        <button class="link-btn" id="change-location"><svg class="ic sm"><use href="#i-pin"/></svg>Location</button>
-      </div>
-      <div id="weather-body"></div>
-    </section>
+    <!-- Widgets -->
+    <div class="grid" id="grid"></div>
 
-    <!-- Schedule -->
-    <section class="card reveal" id="schedule-card" aria-labelledby="sched-h" style="--i:6">
-      <div class="card-head">
-        <div class="day-nav">
-          <button class="icon-btn small" id="day-prev" aria-label="Previous day"><svg class="ic"><use href="#i-left"/></svg></button>
-          <h2 id="sched-h" tabindex="0" role="button" title="Back to today">Schedule</h2>
-          <button class="icon-btn small" id="day-next" aria-label="Next day"><svg class="ic"><use href="#i-right"/></svg></button>
-        </div>
-        <button class="link-btn" id="add-event"><svg class="ic sm"><use href="#i-plus"/></svg>Event</button>
-      </div>
-      <p class="muted small-text" id="sched-date"></p>
-      <ul class="list sched" id="schedule"></ul>
-      <div class="card-foot">
-        <button class="link-btn" id="google-sync"><svg class="ic sm"><use href="#i-link"/></svg>Google Calendar</button>
-        <button class="link-btn" id="import-ics"><svg class="ic sm"><use href="#i-upload"/></svg>Import .ics</button>
-        <input type="file" id="ics-file" accept=".ics,text/calendar" hidden>
-        <p class="muted small-text" id="sync-status"></p>
-      </div>
-    </section>
+    <div class="empty-screen" id="empty-screen" hidden>
+      <p>Your screen is empty.</p>
+      <button class="primary" id="empty-add"><svg class="ic sm"><use href="#i-plus"/></svg>Add widgets</button>
+    </div>
 
-    <!-- To-do -->
-    <section class="card reveal" id="todo-card" aria-labelledby="todo-h" style="--i:7">
-      <div class="card-head">
-        <h2 id="todo-h"><span class="chip sm c-green"><svg class="ic"><use href="#i-check"/></svg></span>To-do</h2>
-        <span class="muted small-text" id="todo-count"></span>
-      </div>
-      <form class="add-row" id="todo-form" autocomplete="off">
-        <input type="text" id="todo-input" placeholder="Add a task" aria-label="New task" maxlength="200" enterkeyhint="done">
+    <p class="footnote">Your data stays on this device. Weather by Open-Meteo.</p>
+  </main>
+
+  <!-- Floating dock -->
+  <nav class="dock" id="dock" aria-label="Main">
+    <span class="dock-pill" aria-hidden="true"></span>
+    <button type="button" class="on" id="dock-home" aria-label="Home"><svg class="ic"><use href="#i-home"/></svg><span>Home</span></button>
+    <button type="button" class="dock-add" id="dock-add" aria-label="Add"><svg class="ic"><use href="#i-plus"/></svg></button>
+    <button type="button" id="dock-edit" aria-label="Customize"><svg class="ic"><use href="#i-sliders"/></svg><span>Customize</span></button>
+  </nav>
+
+  <!-- Quick add -->
+  <dialog id="quick-dialog">
+    <div class="sheet">
+      <h3>Add</h3>
+      <form class="add-row" id="quick-task-form" autocomplete="off">
+        <input type="text" id="quick-task" placeholder="New task, e.g. Call the bank" aria-label="New task" maxlength="200" enterkeyhint="done">
         <button type="submit" class="primary" aria-label="Add task"><svg class="ic"><use href="#i-plus"/></svg></button>
       </form>
-      <ul class="list" id="todos"></ul>
-    </section>
-
-    <!-- History -->
-    <section class="card reveal" aria-labelledby="week-h" style="--i:8">
-      <div class="card-head">
-        <h2 id="week-h"><span class="chip sm c-violet"><svg class="ic"><use href="#i-bars"/></svg></span>Last 7 days</h2>
-        <span class="muted small-text">tasks completed</span>
+      <div class="quick-grid">
+        <button type="button" id="quick-event"><span class="chip c-violet"><svg class="ic"><use href="#i-cal"/></svg></span>Event</button>
+        <button type="button" id="quick-widget"><span class="chip"><svg class="ic"><use href="#i-layers"/></svg></span>Widget</button>
+        <button type="button" id="quick-edit"><span class="chip c-green"><svg class="ic"><use href="#i-sliders"/></svg></span>Customize</button>
+        <button type="button" id="quick-settings"><span class="chip c-amber"><svg class="ic"><use href="#i-gear"/></svg></span>Settings</button>
       </div>
-      <div class="bars" id="week-bars" role="img" aria-label="Tasks completed per day over the last 7 days"></div>
-    </section>
+      <div class="actions"><button type="button" data-close>Close</button></div>
+    </div>
+  </dialog>
 
-    <p class="footnote reveal" style="--i:9">Your data stays on this device. Weather by Open-Meteo.</p>
-  </main>
+  <!-- Add widget -->
+  <dialog id="add-dialog">
+    <div class="sheet">
+      <h3>Add a widget</h3>
+      <p class="muted small-text">Start from a ready-made layout…</p>
+      <div class="presets" id="presets"></div>
+      <p class="muted small-text">…or add widgets one by one.</p>
+      <ul class="widget-list" id="widget-list"></ul>
+      <div class="actions"><button type="button" data-close>Close</button></div>
+    </div>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog id="settings-dialog">
+    <div class="sheet">
+      <h3>Settings</h3>
+      <div class="set-row">
+        <span>Temperature</span>
+        <div class="seg" id="set-unit" role="radiogroup" aria-label="Temperature unit">
+          <button type="button" data-v="celsius" role="radio">°C</button><button type="button" data-v="fahrenheit" role="radio">°F</button>
+        </div>
+      </div>
+      <div class="set-row">
+        <span>Appearance</span>
+        <div class="seg" id="set-theme" role="radiogroup" aria-label="Appearance">
+          <button type="button" data-v="auto" role="radio">Auto</button><button type="button" data-v="light" role="radio">Light</button><button type="button" data-v="dark" role="radio">Dark</button>
+        </div>
+      </div>
+      <div class="set-row">
+        <span>Weather location<small id="set-loc" class="muted"></small></span>
+        <button type="button" id="set-loc-btn"><svg class="ic sm"><use href="#i-pin"/></svg>Change</button>
+      </div>
+      <div class="set-row">
+        <span>Google Calendar<small id="set-sync" class="muted"></small></span>
+        <button type="button" id="google-sync"><svg class="ic sm"><use href="#i-link"/></svg>Set up</button>
+      </div>
+      <div class="set-row">
+        <span>Calendar file<small class="muted">Load a one-off .ics file</small></span>
+        <button type="button" id="import-ics"><svg class="ic sm"><use href="#i-upload"/></svg>Import</button>
+        <input type="file" id="ics-file" accept=".ics,text/calendar" hidden>
+      </div>
+      <div class="set-row">
+        <span>Layout<small class="muted">Go back to the starting widgets</small></span>
+        <button type="button" id="set-reset">Reset</button>
+      </div>
+      <p class="muted small-text">Everything you add stays on this device.</p>
+      <div class="actions"><button type="button" data-close>Close</button></div>
+    </div>
+  </dialog>
+
+  <!-- Time zone picker -->
+  <dialog id="tz-dialog">
+    <div class="sheet">
+      <h3>Add a city</h3>
+      <input type="search" id="tz-search" placeholder="Search, e.g. Tokyo or London" aria-label="Search cities" autocomplete="off">
+      <ul class="list tz-list" id="tz-list"></ul>
+      <div class="actions"><button type="button" data-close>Close</button></div>
+    </div>
+  </dialog>
 
   <!-- Event dialog -->
   <dialog id="event-dialog">
@@ -208,16 +247,7 @@
     </form>
   </dialog>
 
-  <!-- Floating glass dock -->
-  <nav class="dock" id="dock" aria-label="Jump to section">
-    <span class="dock-pill" aria-hidden="true"></span>
-    <button type="button" class="on" data-target="hero" aria-label="Today"><svg class="ic"><use href="#i-home"/></svg><span>Today</span></button>
-    <button type="button" data-target="weather-card" aria-label="Weather"><svg class="ic"><use href="#i-sun"/></svg><span>Weather</span></button>
-    <button type="button" data-target="schedule-card" aria-label="Calendar"><svg class="ic"><use href="#i-cal"/></svg><span>Calendar</span></button>
-    <button type="button" data-target="todo-card" aria-label="Tasks"><svg class="ic"><use href="#i-check"/></svg><span>Tasks</span></button>
-  </nav>
-
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-text"></span><button type="button" id="toast-action" hidden></button></div>
   <script src="app.js"></script>
 </body>
 </html>
