@@ -42,6 +42,7 @@ const defaults = () => ({
   unit: /^en-(US|LR|MM)$/.test(navigator.language) ? 'fahrenheit' : 'celsius',
   loc: null,      // {lat, lon, name}
   weather: null,  // {at, key, data}
+  installDismissed: false,
 });
 
 function load() {
@@ -198,7 +199,7 @@ let weatherLoading = false;
 async function fetchWeather(force = false) {
   if (!state.loc || weatherLoading) return;
   const w = state.weather;
-  if (!force && w && w.key === locKey() && Date.now() - w.at < 20 * 60 * 1000) return;
+  if (!force && w && w.key === locKey() && Date.now() - w.at < 10 * 60 * 1000) return;
   weatherLoading = true;
   const imperial = state.unit === 'fahrenheit';
   const q = new URLSearchParams({
@@ -309,7 +310,7 @@ $('#loc-gps').addEventListener('click', () => {
   if (!navigator.geolocation) { msg.textContent = 'Location isn’t available on this device. Search for a city instead.'; return; }
   msg.textContent = 'Locating…';
   navigator.geolocation.getCurrentPosition(
-    (pos) => setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude, name: 'Current location' }),
+    (pos) => setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude, name: 'Current location', auto: true }),
     () => { msg.textContent = 'Couldn’t get your location (permission denied?). Search for a city instead.'; },
     { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
 });
@@ -336,6 +337,35 @@ $('#loc-form').addEventListener('submit', async (e) => {
 });
 $('#loc-close').addEventListener('click', () => locDialog.close());
 $('#change-location').addEventListener('click', openLocation);
+
+// When the location came from GPS, quietly follow you as you move (only if permission was
+// already granted, so opening the app never triggers a prompt).
+function distKm(a, b) {
+  const rad = Math.PI / 180;
+  const x = Math.sin(((b.lat - a.lat) * rad) / 2) ** 2 +
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(((b.lon - a.lon) * rad) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(x));
+}
+async function refreshAutoLocation() {
+  if (!state.loc || !state.loc.auto || !navigator.geolocation || !navigator.permissions) return;
+  try {
+    if ((await navigator.permissions.query({ name: 'geolocation' })).state !== 'granted') return;
+  } catch { return; }
+  await new Promise((resolve) => navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const next = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      if (distKm(state.loc, next) > 3) {
+        state.loc = { ...state.loc, ...next };
+        state.weather = null;
+        save();
+        renderWeather();
+      }
+      resolve();
+    },
+    resolve,
+    { enableHighAccuracy: false, timeout: 5000, maximumAge: 15 * 60 * 1000 }));
+}
+const refreshWeather = (force = false) => refreshAutoLocation().then(() => fetchWeather(force));
 
 /* ---------- to-do ---------- */
 function renderTodos() {
@@ -507,7 +537,7 @@ function renderStats() {
   const data = currentWeather();
   if (data) {
     $('#stat-temp').textContent = `${Math.round(data.current.temperature_2m)}°`;
-    $('#stat-temp-label').textContent = wmo(data.current.weather_code)[1];
+    $('#stat-temp-label').textContent = `${Math.round(data.daily.temperature_2m_max[0])}°/${Math.round(data.daily.temperature_2m_min[0])}° ${wmo(data.current.weather_code)[1]}`;
   } else {
     $('#stat-temp').textContent = '--';
     $('#stat-temp-label').textContent = state.loc ? 'loading weather' : 'set location';
@@ -562,8 +592,26 @@ function tick() {
   renderStats();
 }
 
-$('#refresh').addEventListener('click', () => { toast('Refreshing…'); fetchWeather(true); tick(); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { tick(); fetchWeather(); } });
+$('#refresh').addEventListener('click', () => { toast('Refreshing…'); refreshWeather(true); tick(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { tick(); refreshWeather(); } });
+window.addEventListener('online', () => fetchWeather(true));
+
+// Android install button (Chrome/Edge/Samsung Internet fire this when the app is installable)
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installEvt = e;
+  if (!state.installDismissed) $('#install').hidden = false;
+});
+window.addEventListener('appinstalled', () => { $('#install').hidden = true; });
+$('#install-btn').addEventListener('click', async () => {
+  if (!installEvt) return;
+  installEvt.prompt();
+  await installEvt.userChoice;
+  installEvt = null;
+  $('#install').hidden = true;
+});
+$('#install-dismiss').addEventListener('click', () => { state.installDismissed = true; save(); $('#install').hidden = true; });
 setInterval(tick, 60 * 1000);
 
 renderHeader();
@@ -572,7 +620,7 @@ renderSchedule();
 renderStats();
 renderWeek();
 renderWeather();
-fetchWeather();
+refreshWeather();
 if (!state.loc) setTimeout(() => { if (!state.loc && !locDialog.open) openLocation(); }, 600);
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

@@ -21,7 +21,15 @@ The app needs to be served over HTTPS for "Add to Home Screen" and location to w
 1. Merge this branch into `main`.
 2. In the repo go to *Settings → Pages* and set *Source* to **GitHub Actions**.
 3. The included workflow publishes the app; open `https://<user>.github.io/<repo>/` on your phone.
-4. iPhone: Safari → Share → **Add to Home Screen**. Android: Chrome menu → **Install app**.
+4. **Android (Chrome):** tap the **Install** banner at the top of the app (or menu ⋮ → **Install app**). It gets a home-screen icon and opens full-screen like any other app.
+5. When Chrome asks for location, choose **Allow** so the weather follows you as you move.
+   (iPhone: Safari → Share → Add to Home Screen.)
+
+### Built for glancing while you're out
+
+- Opens instantly from the phone's cache, even with no signal; it updates itself in the background.
+- Shows the last-known weather when offline and refreshes it when you open the app (if it's over 10 minutes old) and when the connection comes back.
+- If you used "Use my current location", the weather location follows you automatically (only after you've granted permission).
 
 **Try it locally**: `python3 -m http.server 8000`, then open `http://localhost:8000` (or `http://<computer-ip>:8000` on the same Wi-Fi; location and install need HTTPS, but everything else works).
 

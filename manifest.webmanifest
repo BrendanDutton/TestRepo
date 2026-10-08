@@ -1,11 +1,15 @@
 {
+  "id": "./",
   "name": "My Day",
+  "lang": "en",
+  "categories": ["productivity", "lifestyle"],
   "short_name": "My Day",
   "description": "To-dos, calendar and weather at a glance.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
+  "display_override": ["standalone"],
   "background_color": "#f4f5f9",
   "theme_color": "#4f6bed",
   "icons": [

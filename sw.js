@@ -1,9 +1,10 @@
 'use strict';
-// Network-first for the app shell so updates show up as soon as you're online,
-// with the cache as the offline fallback. Weather API calls are never cached here
-// (the app keeps its own last-known copy).
-const CACHE = 'my-day-v1';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
+// Stale-while-revalidate for the app shell: the app opens instantly from cache (even with no
+// signal) and quietly updates itself in the background; changes show up the next time you open it.
+// Weather API calls are cross-origin and never touched here (the app keeps its own last-known copy).
+const CACHE = 'my-day-v2';
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
+  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -19,11 +20,12 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
-  e.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
-        return res;
-      })
-      .catch(() => caches.match(req).then((hit) => hit || caches.match('index.html'))));
+  e.respondWith(caches.open(CACHE).then(async (cache) => {
+    const hit = await cache.match(req, { ignoreSearch: true });
+    const refresh = fetch(req)
+      .then((res) => { if (res.ok) cache.put(req, res.clone()); return res; })
+      .catch(() => null);
+    if (hit) { e.waitUntil(refresh); return hit; }
+    return (await refresh) || (await cache.match('index.html')) || Response.error();
+  }));
 });
