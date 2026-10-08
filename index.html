@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>My Day</title>
+  <meta name="description" content="Daily dashboard: to-dos, calendar and weather at a glance.">
+  <meta name="theme-color" content="#f4f5f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1117" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="My Day">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="top">
+      <div>
+        <p class="greeting" id="greeting"></p>
+        <h1 id="today-label"></h1>
+      </div>
+      <button class="icon-btn" id="refresh" aria-label="Refresh weather" title="Refresh">&#x21bb;</button>
+    </header>
+
+    <!-- Stats -->
+    <section class="stats" aria-label="Today at a glance">
+      <div class="tile ring-tile">
+        <svg viewBox="0 0 64 64" class="ring" aria-hidden="true">
+          <circle cx="32" cy="32" r="26" class="ring-bg"></circle>
+          <circle cx="32" cy="32" r="26" class="ring-fg" id="ring-fg" stroke-dasharray="0 163.36"></circle>
+        </svg>
+        <div>
+          <div class="tile-value" id="stat-progress">0%</div>
+          <div class="tile-label" id="stat-tasks">No tasks yet</div>
+        </div>
+      </div>
+      <div class="tile">
+        <div class="tile-value" id="stat-events">0</div>
+        <div class="tile-label">events today</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value" id="stat-temp">--</div>
+        <div class="tile-label" id="stat-temp-label">weather</div>
+      </div>
+      <div class="tile">
+        <div class="tile-value" id="stat-next">--</div>
+        <div class="tile-label" id="stat-next-label">next up</div>
+      </div>
+    </section>
+
+    <!-- Weather -->
+    <section class="card" id="weather-card" aria-labelledby="weather-h">
+      <div class="card-head">
+        <h2 id="weather-h">Weather</h2>
+        <button class="link-btn" id="change-location">Location</button>
+      </div>
+      <div id="weather-body"></div>
+    </section>
+
+    <!-- Schedule -->
+    <section class="card" aria-labelledby="sched-h">
+      <div class="card-head">
+        <div class="day-nav">
+          <button class="icon-btn small" id="day-prev" aria-label="Previous day">&#x2039;</button>
+          <h2 id="sched-h">Schedule</h2>
+          <button class="icon-btn small" id="day-next" aria-label="Next day">&#x203a;</button>
+        </div>
+        <button class="link-btn" id="add-event">+ Event</button>
+      </div>
+      <p class="muted small-text" id="sched-date"></p>
+      <ul class="list" id="schedule"></ul>
+      <div class="card-foot">
+        <button class="link-btn" id="import-ics">Import calendar (.ics)</button>
+        <input type="file" id="ics-file" accept=".ics,text/calendar" hidden>
+      </div>
+    </section>
+
+    <!-- To-do -->
+    <section class="card" aria-labelledby="todo-h">
+      <div class="card-head">
+        <h2 id="todo-h">To-do</h2>
+        <span class="muted small-text" id="todo-count"></span>
+      </div>
+      <form class="add-row" id="todo-form" autocomplete="off">
+        <input type="text" id="todo-input" placeholder="Add a task" aria-label="New task" maxlength="200" enterkeyhint="done">
+        <button type="submit" class="primary">Add</button>
+      </form>
+      <ul class="list" id="todos"></ul>
+    </section>
+
+    <!-- History -->
+    <section class="card" aria-labelledby="week-h">
+      <div class="card-head"><h2 id="week-h">Last 7 days</h2><span class="muted small-text">tasks completed</span></div>
+      <div class="bars" id="week-bars" role="img" aria-label="Tasks completed per day over the last 7 days"></div>
+    </section>
+
+    <p class="footnote">Data stays on this device. Weather by Open-Meteo.</p>
+  </main>
+
+  <!-- Event dialog -->
+  <dialog id="event-dialog">
+    <form method="dialog" id="event-form" class="sheet">
+      <h3>New event</h3>
+      <label>Title <input type="text" id="ev-title" required maxlength="120"></label>
+      <label>Date <input type="date" id="ev-date" required></label>
+      <label class="check"><input type="checkbox" id="ev-allday"> All day</label>
+      <div class="two" id="ev-times">
+        <label>Start <input type="time" id="ev-start"></label>
+        <label>End <input type="time" id="ev-end"></label>
+      </div>
+      <div class="actions">
+        <button type="button" id="ev-cancel">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Location dialog -->
+  <dialog id="loc-dialog">
+    <div class="sheet">
+      <h3>Weather location</h3>
+      <button type="button" class="primary wide" id="loc-gps">Use my current location</button>
+      <form id="loc-form" class="add-row" autocomplete="off">
+        <input type="search" id="loc-input" placeholder="Or search a city" aria-label="City" maxlength="80">
+        <button type="submit">Search</button>
+      </form>
+      <ul class="list" id="loc-results"></ul>
+      <p class="muted small-text" id="loc-msg"></p>
+      <div class="actions"><button type="button" id="loc-close">Close</button></div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
