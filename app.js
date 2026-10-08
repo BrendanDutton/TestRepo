@@ -78,7 +78,7 @@ function tween(el, to, fmt = (v) => String(Math.round(v)), ms = 650) {
 function swapText(el, text) {
   if (el.textContent === text) return;
   el.textContent = text;
-  if (!reduceMotion.matches && el.animate) el.animate([{ opacity: 0, transform: 'translateY(5px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  if (!reduceMotion.matches && el.animate) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out' });
 }
 
 // Close a <dialog> with its exit animation.
@@ -135,6 +135,7 @@ const defaults = () => ({
   layout: null,   // [{id, type, size}]
   theme: 'auto',
   clock: '12',    // '12' (am/pm) or '24'
+  glass: 'liquid', // 'liquid' or 'frosted'
   tipSeen: false,
   habits: [],     // {id, name, days: {dayKey: 1}}
   countdowns: [], // {id, title, date: 'YYYY-MM-DD'}
@@ -390,6 +391,14 @@ for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('c
 
 /* ---------- theme ---------- */
 const darkMq = matchMedia('(prefers-color-scheme: dark)');
+// Refraction needs SVG filters in backdrop-filter, which only Chromium browsers (Chrome, Brave, Edge…) support.
+const canRefract = !!(navigator.userAgentData && navigator.userAgentData.brands.some((b) => /Chromium|Chrome/.test(b.brand)));
+function applyGlass() {
+  const root = document.documentElement;
+  root.classList.toggle('frosted', state.glass === 'frosted');
+  root.classList.toggle('liquid', state.glass !== 'frosted' && canRefract);
+}
+applyGlass();
 function applyTheme() {
   const dark = state.theme === 'dark' || (state.theme === 'auto' && darkMq.matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -660,11 +669,13 @@ const calStep = (dir) => goToDay(addDays(viewDay, dir * (calMode === 'week' ? 7 
 function morph(sec, item) {
   if (reduceMotion.matches || !sec.isConnected) { updateWidget(sec, item); return; }
   const h0 = sec.getBoundingClientRect().height;
-  if (sec.parentElement === grid) flip(() => updateWidget(sec, item), sec); else updateWidget(sec, item);
+  sec.getAnimations().filter((a) => a.effect?.getKeyframes().some((k) => k.height)).forEach((a) => a.cancel());
+  updateWidget(sec, item);
   const h1 = sec.getBoundingClientRect().height;
   if (Math.abs(h1 - h0) < 1) return;
   sec.style.overflow = 'hidden';
-  sec.animate([{ height: `${h0}px` }, { height: `${h1}px` }], { duration: 650, easing: springEase() }).finished.finally(() => { sec.style.overflow = ''; });
+  const done = () => { sec.style.overflow = ''; };
+  sec.animate([{ height: `${h0}px` }, { height: `${h1}px` }], { duration: 650, easing: springEase() }).finished.then(done, done);
 }
 function morphWidgets(type) {
   for (const item of state.layout) if (item.type === type && nodeOf(item.id)) morph(nodeOf(item.id), item);
@@ -1472,11 +1483,24 @@ function renderGrid(animate = false) {
   [...grid.children].forEach((el, i) => {
     if (animate && !reduceMotion.matches) { el.classList.add('w-enter'); el.style.setProperty('--i', i); }
     else if (el.getBoundingClientRect().top < innerHeight) { el.classList.add('intro'); el.style.setProperty('--i', i + 1); }
-    else el.classList.add('reveal');
+    else { el.classList.add('pending'); revealObs?.observe(el); }
   });
   updateEmpty();
   runFocus();
 }
+// Cards below the fold fade up once when they first scroll into view, then the animation is removed
+// so nothing keeps animating a glass panel later (Android can misdraw those).
+const revealObs = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    revealObs.unobserve(e.target);
+    e.target.classList.remove('pending');
+    if (!reduceMotion.matches) e.target.classList.add('revealed');
+  }
+}, { rootMargin: '0px 0px -8% 0px' }) : null;
+grid.addEventListener('animationend', (e) => {
+  if (e.target.parentElement === grid) e.target.classList.remove('intro', 'revealed', 'w-enter', 'w-swap');
+});
 function updateEmpty() { $('#empty-screen').hidden = state.layout.length > 0; }
 
 // Animate everything in the grid from where it was to where it ends up.
@@ -1673,7 +1697,7 @@ function openAdd() {
 /* ---------- Settings ---------- */
 const settingsDialog = $('#settings-dialog');
 function renderSettings() {
-  for (const [id, val] of [['#set-unit', state.unit], ['#set-theme', state.theme], ['#set-clock', state.clock]]) {
+  for (const [id, val] of [['#set-unit', state.unit], ['#set-theme', state.theme], ['#set-clock', state.clock], ['#set-glass', state.glass]]) {
     for (const b of $(id).children) { const on = b.dataset.v === val; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); }
   }
   $('#set-loc').textContent = state.loc ? state.loc.name || 'Set' : 'Not set';
@@ -1687,6 +1711,11 @@ $('#set-unit').addEventListener('click', (e) => {
   state.unit = v; save(); renderSettings();
   refresh('weather', 'hourly', 'daily', 'sun', 'air'); renderSummary();
   fetchWeather(true);
+});
+$('#set-glass').addEventListener('click', (e) => {
+  const v = e.target.closest('button')?.dataset.v;
+  if (!v || v === state.glass) return;
+  state.glass = v; save(); applyGlass(); renderSettings();
 });
 $('#set-clock').addEventListener('click', (e) => {
   const v = e.target.closest('button')?.dataset.v;
