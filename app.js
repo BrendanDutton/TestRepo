@@ -896,7 +896,7 @@ W.hourly = {
         h('span', {}, i === start ? 'Now' : fmtWall(d.hourly.time[i], { hour: 'numeric' })),
         h('span', { class: 'h-ico', 'aria-hidden': 'true' }, wmo(d.hourly.weather_code[i])[0]),
         h('b', {}, deg(d.hourly.temperature_2m[i])),
-        h('span', { class: 'h-rain' }, p >= 20 ? `${p}%` : '')));
+        h('span', { class: `h-rain${p >= 30 ? ' likely' : ''}`, title: 'Chance of rain' }, `💧${p ?? 0}%`)));
     }
     body.append(strip);
   },
