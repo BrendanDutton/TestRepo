@@ -43,6 +43,7 @@ const defaults = () => ({
   loc: null,      // {lat, lon, name}
   weather: null,  // {at, key, data}
   installDismissed: false,
+  sync: null,     // {url, at}: Google Calendar relay link and last successful sync
 });
 
 function load() {
@@ -61,16 +62,49 @@ function save() {
 }
 
 /* ---------- calendar: iCalendar parsing ---------- */
+const tzFormatters = new Map();
+// Wall-clock time in an IANA zone -> epoch ms. Returns null for zone names the browser doesn't know.
+function zonedMs(y, mo, d, hh, mm, ss, tz) {
+  try {
+    let fmt = tzFormatters.get(tz);
+    if (!fmt) {
+      fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric',
+      });
+      tzFormatters.set(tz, fmt);
+    }
+    const offsetAt = (t) => {
+      const p = Object.fromEntries(fmt.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+      return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - t;
+    };
+    const guess = Date.UTC(y, mo, d, hh, mm, ss);
+    return guess - offsetAt(guess - offsetAt(guess));
+  } catch { return null; }
+}
+
 function icsDate(value, params) {
   const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(value.trim());
   if (!m) return null;
   const [, y, mo, d, hh, mm, ss, z] = m;
-  const allDay = !hh || /VALUE=DATE(?!-)/i.test(params);
+  const allDay = !hh;
   if (z) return { ms: Date.UTC(+y, +mo - 1, +d, +hh, +mm, +(ss || 0)), allDay: false };
-  // Floating or TZID times are treated as device-local time.
+  const tz = !allDay && /TZID=([^;:]+)/i.exec(params || '');
+  const zoned = tz && zonedMs(+y, +mo - 1, +d, +hh, +mm, +(ss || 0), tz[1].replace(/^"|"$/g, ''));
+  if (zoned != null && zoned !== false) return { ms: zoned, allDay };
+  // Floating times (or zones the browser can't resolve) are treated as device-local.
   return { ms: new Date(+y, +mo - 1, +d, +(hh || 0), +(mm || 0), +(ss || 0)).getTime(), allDay };
 }
 
+function icsDuration(v) {
+  const m = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(v.trim());
+  if (!m) return null;
+  const [, sign, w, d, hh, mm, ss] = m;
+  const ms = (((+w || 0) * 7 + (+d || 0)) * 86400 + (+hh || 0) * 3600 + (+mm || 0) * 60 + (+ss || 0)) * 1000;
+  return sign === '-' ? -ms : ms;
+}
+
+const WEEKDAYS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 function parseRRule(text) {
   const r = {};
   for (const part of text.split(';')) {
@@ -79,30 +113,34 @@ function parseRRule(text) {
   }
   const freq = { DAILY: 'd', WEEKLY: 'w', MONTHLY: 'm', YEARLY: 'y' }[r.FREQ];
   if (!freq) return null;
-  const days = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
   const out = { freq, interval: Math.max(1, parseInt(r.INTERVAL, 10) || 1) };
   if (r.COUNT) out.count = parseInt(r.COUNT, 10);
   if (r.UNTIL) { const u = icsDate(r.UNTIL, ''); if (u) out.until = u.ms + (u.allDay ? 86400000 : 0); }
-  if (r.BYDAY && freq === 'w') {
-    out.byday = r.BYDAY.split(',').map((d) => days.indexOf(d.slice(-2))).filter((i) => i >= 0);
+  if (r.BYDAY) {
+    const days = r.BYDAY.split(',');
+    if (freq === 'w') out.byday = days.map((d) => WEEKDAYS.indexOf(d.slice(-2))).filter((i) => i >= 0);
+    else if (freq === 'm' && days.length === 1) {
+      const m = /^([+-]?\d+)?(SU|MO|TU|WE|TH|FR|SA)$/.exec(days[0]);
+      if (m && m[1]) out.nth = { n: parseInt(m[1], 10), wd: WEEKDAYS.indexOf(m[2]) }; // e.g. 2TU = second Tuesday
+    }
   }
+  if (r.BYMONTHDAY && freq === 'm' && /^\d+$/.test(r.BYMONTHDAY)) out.monthday = parseInt(r.BYMONTHDAY, 10);
   return out;
 }
 
-function parseICS(text) {
+function parseICS(text, src = 'ics') {
   const lines = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);
-  const events = [];
+  const raw = [];
   let cur = null;
   const unescape = (s) => s.replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1');
   for (const line of lines) {
-    if (line === 'BEGIN:VEVENT') { cur = {}; continue; }
+    if (line === 'BEGIN:VEVENT') { cur = { ex: [] }; continue; }
     if (line === 'END:VEVENT') {
       if (cur && cur.start != null) {
-        const end = cur.end != null ? cur.end : cur.start + (cur.allDay ? 86400000 : 0);
-        events.push({
-          id: uid(), title: cur.title || '(No title)', start: cur.start, end,
-          allDay: !!cur.allDay, src: 'ics', rr: cur.rr || null,
-        });
+        cur.end = cur.end != null ? cur.end
+          : cur.dur != null ? cur.start + cur.dur
+          : cur.start + (cur.allDay ? 86400000 : 0);
+        raw.push(cur);
       }
       cur = null; continue;
     }
@@ -114,30 +152,68 @@ function parseICS(text) {
     const value = line.slice(i + 1);
     switch (name.toUpperCase()) {
       case 'SUMMARY': cur.title = unescape(value).slice(0, 200); break;
+      case 'UID': cur.uid = value.trim(); break;
+      case 'STATUS': cur.cancelled = value.trim().toUpperCase() === 'CANCELLED'; break;
       case 'DTSTART': { const d = icsDate(value, params); if (d) { cur.start = d.ms; cur.allDay = d.allDay; } break; }
       case 'DTEND': { const d = icsDate(value, params); if (d) cur.end = d.ms; break; }
+      case 'DURATION': cur.dur = icsDuration(value); break;
       case 'RRULE': cur.rr = parseRRule(value); break;
+      case 'RECURRENCE-ID': { const d = icsDate(value, params); if (d) cur.rid = d.ms; break; }
+      case 'EXDATE':
+        for (const v of value.split(',')) { const d = icsDate(v, params); if (d) cur.ex.push(d.ms); }
+        break;
       default:
     }
   }
-  return events;
+  // An edited or cancelled single occurrence carries RECURRENCE-ID: hide that slot in the series.
+  // (An edited one then shows up as its own standalone event.)
+  const masters = new Map();
+  for (const e of raw) if (e.rid == null && e.rr && e.uid) masters.set(e.uid, e);
+  for (const e of raw) if (e.rid != null && masters.has(e.uid)) masters.get(e.uid).ex.push(e.rid);
+  return raw.filter((e) => !e.cancelled).map((e) => ({
+    id: uid(), title: e.title || '(No title)', start: e.start, end: e.end, allDay: !!e.allDay,
+    src, rr: e.rr || null, ex: e.ex.length ? e.ex : undefined,
+  }));
+}
+
+// Keep stored data small: drop things that ended more than two weeks ago.
+function pruneOld(events) {
+  const cutoff = Date.now() - 14 * 86400000;
+  return events.filter((e) => (e.rr ? e.rr.until == null || e.rr.until >= cutoff : e.end >= cutoff));
 }
 
 /* ---------- calendar: occurrences ---------- */
-// Yields [startMs, endMs] for each occurrence of an event, in order.
-function* occurrences(ev) {
+function nthWeekday(year, month, wd, n) { // day-of-month of the n-th (or -n-th from the end) weekday, or 0
+  const last = new Date(year, month + 1, 0).getDate();
+  if (n > 0) {
+    const day = ((wd - new Date(year, month, 1).getDay() + 7) % 7) + 1 + (n - 1) * 7;
+    return day <= last ? day : 0;
+  }
+  const day = last - ((new Date(year, month + 1, 0).getDay() - wd + 7) % 7) + (n + 1) * 7;
+  return day >= 1 ? day : 0;
+}
+
+// Yields [startMs, endMs] for each occurrence of an event, in order. `from` lets long-running
+// series skip ahead instead of walking every occurrence since they began.
+function* occurrences(ev, from) {
   const dur = Math.max(0, ev.end - ev.start);
   const r = ev.rr;
   if (!r) { yield [ev.start, ev.start + dur]; return; }
   const s = new Date(ev.start);
   let count = 0;
+  let i0 = 0;
+  if (!r.count && from != null && from > ev.start) {
+    const span = from - ev.start, day = 86400000;
+    const unit = { d: 1, w: 7, m: 28, y: 365 }[r.freq] * day * r.interval; // months/years: lower bounds, so never overshoot
+    i0 = Math.max(0, Math.floor(span / unit) - 1);
+  }
   const make = (d) => {
     const t = d.getTime();
     if (r.until != null && t > r.until) return null;
     if (r.count && ++count > r.count) return null;
     return [t, t + dur];
   };
-  for (let i = 0; i < 20000; i++) {
+  for (let i = i0; i < i0 + 20000; i++) {
     if (r.freq === 'w') {
       const days = (r.byday && r.byday.length ? [...r.byday] : [s.getDay()]).sort();
       for (const wd of days) {
@@ -149,11 +225,14 @@ function* occurrences(ev) {
         yield o;
       }
     } else {
-      const d = new Date(s);
+      let d = new Date(s);
       if (r.freq === 'd') d.setDate(s.getDate() + i * r.interval);
       else if (r.freq === 'm') {
-        d.setMonth(s.getMonth() + i * r.interval);
-        if (d.getDate() !== s.getDate()) continue; // e.g. the 31st in a 30-day month
+        const y = s.getFullYear(), mo = s.getMonth() + i * r.interval;
+        const base = new Date(y, mo, 1);
+        const day = r.nth ? nthWeekday(base.getFullYear(), base.getMonth(), r.nth.wd, r.nth.n) : (r.monthday || s.getDate());
+        d = new Date(base.getFullYear(), base.getMonth(), day || 99, s.getHours(), s.getMinutes(), s.getSeconds());
+        if (!day || d.getMonth() !== base.getMonth() || d < s) continue; // no such day this month
       } else {
         d.setFullYear(s.getFullYear() + i * r.interval);
         if (d.getDate() !== s.getDate()) continue; // Feb 29
@@ -170,8 +249,9 @@ function eventsOn(date) {
   const to = addDays(startOfDay(date), 1).getTime();
   const out = [];
   for (const ev of state.events) {
-    for (const [s, e] of occurrences(ev)) {
+    for (const [s, e] of occurrences(ev, from)) {
       if (s >= to) break;
+      if (ev.ex && ev.ex.includes(s)) continue;
       if (Math.max(e, s + 1) > from) out.push({ ev, s, e });
     }
   }
@@ -509,7 +589,7 @@ $('#ics-file').addEventListener('change', async (e) => {
   if (!file) return;
   if (file.size > 5 * 1024 * 1024) { toast('That file is too large'); return; }
   try {
-    const events = parseICS(await file.text());
+    const events = parseICS(await file.text(), 'ics');
     if (!events.length) { toast('No events found in that file'); return; }
     state.events = state.events.filter((x) => x.src !== 'ics').concat(events);
     save(); renderSchedule(); renderStats();
@@ -517,6 +597,77 @@ $('#ics-file').addEventListener('change', async (e) => {
   } catch {
     toast('Couldn’t read that file');
   }
+});
+
+/* ---------- Google Calendar sync (via the relay in worker/) ---------- */
+let syncing = false;
+let syncError = '';
+
+function renderSyncStatus() {
+  const el = $('#sync-status');
+  const s = state.sync;
+  if (!s) { el.textContent = ''; return; }
+  const last = s.at ? `Synced ${fmtTime(s.at)}` : 'Not synced yet';
+  el.textContent = syncError ? `${last}. ${syncError}` : last;
+}
+
+async function syncCalendar(force = false) {
+  const s = state.sync;
+  if (!s || !s.url || syncing) return null;
+  if (!force && s.at && Date.now() - s.at < 5 * 60 * 1000) return null;
+  syncing = true;
+  try {
+    const res = await fetch(s.url, { cache: 'no-store' });
+    if (res.status === 401) throw new Error('The access key in the link was rejected.');
+    if (!res.ok) throw new Error(`The relay returned an error (${res.status}).`);
+    const text = await res.text();
+    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('That link didn’t return a calendar.');
+    const events = pruneOld(parseICS(text, 'sync'));
+    state.events = state.events.filter((x) => x.src !== 'sync').concat(events);
+    state.sync = { ...s, at: Date.now() };
+    syncError = '';
+    save();
+    return events.length;
+  } catch (e) {
+    syncError = e instanceof TypeError ? 'Couldn’t reach the relay (offline?). Showing the last sync.' : `${e.message} Showing the last sync.`;
+    return null;
+  } finally {
+    syncing = false;
+    renderSchedule(); renderStats(); renderSyncStatus();
+  }
+}
+
+const syncDialog = $('#sync-dialog');
+$('#google-sync').addEventListener('click', () => {
+  $('#sync-url').value = state.sync ? state.sync.url : '';
+  $('#sync-msg').textContent = '';
+  $('#sync-msg').className = 'small-text';
+  $('#sync-disconnect').hidden = !state.sync;
+  syncDialog.showModal();
+});
+$('#sync-close').addEventListener('click', () => syncDialog.close());
+$('#sync-disconnect').addEventListener('click', () => {
+  state.sync = null;
+  state.events = state.events.filter((x) => x.src !== 'sync');
+  syncError = '';
+  save(); renderSchedule(); renderStats(); renderSyncStatus();
+  syncDialog.close();
+  toast('Google Calendar disconnected');
+});
+$('#sync-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('#sync-msg');
+  const raw = $('#sync-url').value.trim();
+  let url;
+  try { url = new URL(raw); } catch { url = null; }
+  msg.className = 'small-text';
+  if (!url || url.protocol !== 'https:') { msg.textContent = 'Paste the full https:// link, including the ?key=… part.'; msg.classList.add('err'); return; }
+  state.sync = { url: url.href, at: 0 };
+  msg.textContent = 'Syncing…';
+  const n = await syncCalendar(true);
+  if (n == null) { msg.textContent = syncError.replace(' Showing the last sync.', ''); msg.classList.add('err'); save(); return; }
+  syncDialog.close();
+  toast(`Synced ${n} calendar event${n === 1 ? '' : 's'}`);
 });
 
 /* ---------- stats & history ---------- */
@@ -592,9 +743,9 @@ function tick() {
   renderStats();
 }
 
-$('#refresh').addEventListener('click', () => { toast('Refreshing…'); refreshWeather(true); tick(); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { tick(); refreshWeather(); } });
-window.addEventListener('online', () => fetchWeather(true));
+$('#refresh').addEventListener('click', () => { toast('Refreshing…'); refreshWeather(true); syncCalendar(true); tick(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { tick(); refreshWeather(); syncCalendar(); } });
+window.addEventListener('online', () => { fetchWeather(true); syncCalendar(true); });
 
 // Android install button (Chrome/Edge/Samsung Internet fire this when the app is installable)
 let installEvt = null;
@@ -613,6 +764,7 @@ $('#install-btn').addEventListener('click', async () => {
 });
 $('#install-dismiss').addEventListener('click', () => { state.installDismissed = true; save(); $('#install').hidden = true; });
 setInterval(tick, 60 * 1000);
+setInterval(() => { if (!document.hidden) syncCalendar(); }, 15 * 60 * 1000);
 
 renderHeader();
 renderTodos();
@@ -620,7 +772,9 @@ renderSchedule();
 renderStats();
 renderWeek();
 renderWeather();
+renderSyncStatus();
 refreshWeather();
+syncCalendar();
 if (!state.loc) setTimeout(() => { if (!state.loc && !locDialog.open) openLocation(); }, 600);
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

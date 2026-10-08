@@ -80,8 +80,10 @@
       <p class="muted small-text" id="sched-date"></p>
       <ul class="list" id="schedule"></ul>
       <div class="card-foot">
-        <button class="link-btn" id="import-ics">Import calendar (.ics)</button>
+        <button class="link-btn" id="google-sync">Google Calendar sync</button>
+        <button class="link-btn" id="import-ics">Import .ics</button>
         <input type="file" id="ics-file" accept=".ics,text/calendar" hidden>
+        <p class="muted small-text" id="sync-status"></p>
       </div>
     </section>
 
@@ -104,7 +106,7 @@
       <div class="bars" id="week-bars" role="img" aria-label="Tasks completed per day over the last 7 days"></div>
     </section>
 
-    <p class="footnote">Data stays on this device. Weather by Open-Meteo.</p>
+    <p class="footnote">Your data stays on this device. Weather by Open-Meteo.</p>
   </main>
 
   <!-- Event dialog -->
@@ -138,6 +140,21 @@
       <p class="muted small-text" id="loc-msg"></p>
       <div class="actions"><button type="button" id="loc-close">Close</button></div>
     </div>
+  </dialog>
+
+  <!-- Google Calendar sync dialog -->
+  <dialog id="sync-dialog">
+    <form id="sync-form" class="sheet" novalidate>
+      <h3>Google Calendar sync</h3>
+      <p class="muted small-text">Paste the sync link from your calendar relay (see "Live Google Calendar" in the README). It looks like <code>https://my-day-calendar.you.workers.dev/?key=…</code></p>
+      <label>Sync link <input type="url" id="sync-url" placeholder="https://…workers.dev/?key=…" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <p class="small-text" id="sync-msg" role="status"></p>
+      <div class="actions">
+        <button type="button" id="sync-disconnect">Disconnect</button>
+        <button type="button" id="sync-close">Close</button>
+        <button type="submit" class="primary" id="sync-save">Save &amp; sync</button>
+      </div>
+    </form>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
