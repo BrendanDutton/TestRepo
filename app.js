@@ -956,13 +956,16 @@ W.progress = {
     const pct = total ? Math.round((done / total) * 100) : 0;
     const ring = h('div', { class: 'ring-wrap big' });
     ring.innerHTML = `<svg viewBox="0 0 64 64" class="ring" aria-hidden="true"><circle cx="32" cy="32" r="26" class="ring-bg"/><circle cx="32" cy="32" r="26" class="ring-fg" stroke-dasharray="${((sec._pct || 0) / 100) * RING_C} ${RING_C}"/></svg>`;
-    const pctEl = h('span', { class: 'ring-text' }, `${pct}%`);
-    ring.append(pctEl);
-    body.append(h('div', { class: 'prog' }, ring, h('div', {},
-      h('p', { class: 'prog-big' }, total ? `${done} of ${total}` : 'No tasks'),
-      h('p', { class: 'muted small-text' }, !total ? 'Add one in To-do' : done === total ? 'All done. Nice!' : `${plural(total - done, 'task')} left`))));
+    ring.append(h('span', { class: 'ring-text' }, total ? `${done}/${total}` : '–'));
+    const left = total - done;
+    body.append(h('div', { class: 'prog' }, ring, h('div', { class: 'prog-text' },
+      h('p', { class: 'prog-big' }, !total ? 'No tasks' : left ? `${left} left` : 'All done!'),
+      h('p', { class: 'muted small-text' }, !total ? 'Add one in To-do' : `${pct}% done today`))));
     sec._pct = pct;
-    raf2(() => ring.querySelector('.ring-fg').setAttribute('stroke-dasharray', `${(pct / 100) * RING_C} ${RING_C}`));
+    const fg = ring.querySelector('.ring-fg');
+    fg.style.opacity = (sec._pctShown ?? pct) ? '1' : '0'; // a 0-length round cap would draw a stray dot
+    sec._pctShown = pct;
+    raf2(() => { fg.setAttribute('stroke-dasharray', `${(pct / 100) * RING_C} ${RING_C}`); fg.style.opacity = pct ? '1' : '0'; });
   },
 };
 
