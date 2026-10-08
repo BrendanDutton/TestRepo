@@ -56,9 +56,9 @@
   --warn: #f5a524;
   --danger: #ff6b7d;
   --aurora-opacity: 0.7;
-  --glass: rgba(255, 255, 255, 0.05);
+  --glass: rgba(8, 10, 20, 0.16);
   --glass-strong: rgba(30, 34, 54, 0.55);
-  --blur: blur(12px) saturate(160%) brightness(0.6);
+  --blur: blur(12px) saturate(160%) brightness(0.52);
   --glass-solid: rgba(24, 28, 44, 0.92);
   --rim: inset 1.5px 1.5px 0 -0.5px rgba(255, 255, 255, 0.5), inset -1px -1px 0 -0.5px rgba(255, 255, 255, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.1), inset 0 0 20px rgba(255, 255, 255, 0.07);
   --lift: 0 18px 38px -16px rgba(0, 0, 0, 0.7), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
@@ -193,7 +193,7 @@ h1 { font-size: clamp(1.6rem, 7.4vw, 2.1rem); font-weight: 760; letter-spacing: 
 [data-theme="dark"] .chip.c-rose { color: #ff8fab; background: rgba(255, 90, 130, 0.22); }
 
 /* ---------- Widget grid ---------- */
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+.grid { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: stretch; } /* positioned: widget offsets are measured from the grid (drag hit-testing) */
 .widget { position: relative; grid-column: span 2; border-radius: var(--radius); padding: 14px 16px 16px; min-width: 0; container-type: inline-size; scroll-margin: 90px 0 120px; }
 .widget.size-half { grid-column: span 1; padding: 14px; }
 .w-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 36px; margin-bottom: 8px; }
@@ -238,7 +238,7 @@ h1 { font-size: clamp(1.6rem, 7.4vw, 2.1rem); font-weight: 760; letter-spacing: 
 /* ---------- Weather widget (sky card) ---------- */
 .w-weather {
   --skyc: #3d4fd0;
-  color: #fff; overflow: hidden; isolation: isolate;
+  color: #fff; isolation: isolate;
   background: color-mix(in srgb, var(--skyc) 86%, transparent);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.22), inset 0 -18px 30px -22px rgba(255, 255, 255, 0.55), 0 26px 46px -20px color-mix(in srgb, var(--skyc) 70%, transparent);
 }
@@ -349,7 +349,10 @@ h1 { font-size: clamp(1.6rem, 7.4vw, 2.1rem); font-weight: 760; letter-spacing: 
 .todo { overflow: hidden; }
 .todo.enter { animation: slideR 0.7s var(--ease) both; }
 .todo.removing { opacity: 0; padding-top: 0; padding-bottom: 0; border-top-color: transparent; transition: height 0.32s var(--ease), padding 0.32s var(--ease), opacity 0.2s; height: 0 !important; }
-.todo label { flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 40px; cursor: pointer; position: relative; }
+.todo-check { flex: none; display: grid; place-items: center; width: 40px; min-height: 40px; margin: 0 2px 0 -6px; cursor: pointer; position: relative; }
+.todo .t { flex: 1; min-width: 0; justify-content: flex-start; text-align: left; background: transparent; box-shadow: none; padding: 6px 4px; min-height: 40px; border-radius: 10px; font: inherit; cursor: text; }
+.todo .t:active { transform: none; filter: none; background: var(--inset); }
+.t-edit { flex: 1; min-height: 40px !important; padding: 6px 12px !important; }
 .cb { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
 .box { position: relative; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none; color: #fff; background: var(--inset); box-shadow: inset 0 0 0 2px var(--line-strong), var(--inset-rim); transition: background-color 0.3s, box-shadow 0.3s, transform 0.6s var(--spring); }
 .box .ic { width: 16px; height: 16px; stroke-width: 3; stroke-dasharray: 24; stroke-dashoffset: 24; transition: stroke-dashoffset 0.45s var(--ease) 0.08s; }
@@ -358,7 +361,7 @@ h1 { font-size: clamp(1.6rem, 7.4vw, 2.1rem); font-weight: 760; letter-spacing: 
 .cb:focus-visible + .box { outline: 2px solid var(--accent); outline-offset: 2px; }
 .todo.enter .cb:checked + .box::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--good); animation: ripple 0.8s var(--ease) both; }
 .todo .t { overflow-wrap: anywhere; text-decoration: line-through; text-decoration-color: transparent; transition: color 0.35s, text-decoration-color 0.35s; }
-.cb:checked ~ .t { color: var(--muted); text-decoration-color: var(--muted); }
+.todo:has(.cb:checked) .t { color: var(--muted); text-decoration-color: var(--muted); }
 .sep { color: var(--muted); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 12px 0 0 !important; border: 0 !important; }
 
 /* ---------- Habits ---------- */
@@ -591,11 +594,10 @@ dialog.closing::backdrop { animation: fadeOut 0.22s both; }
 .tone-now { --ev: var(--good); }
 .tone-past { --ev: var(--line-strong); }
 
-/* ---------- Liquid glass: clear panels that bend the background at their edges ---------- */
-html.liquid:not(.lite) :is(.card, .install, .tip, .editbar, .round-btn, .dock, .toast, dialog) {
-  -webkit-backdrop-filter: url(#lg) var(--blur); backdrop-filter: url(#lg) var(--blur);
-}
-html.liquid:not(.lite) .w-weather { -webkit-backdrop-filter: url(#lg) blur(12px) saturate(170%) brightness(0.7); backdrop-filter: url(#lg) blur(12px) saturate(170%) brightness(0.7); }
+/* ---------- Liquid glass: clear panels, light blur (cheap on the GPU) ---------- */
+html:not(.frosted) .dock { -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); }
+html:not(.frosted) .w-weather { -webkit-backdrop-filter: blur(12px) saturate(170%) brightness(0.7); backdrop-filter: blur(12px) saturate(170%) brightness(0.7); }
+html:not(.frosted):not([data-theme="dark"]) .w-weather { -webkit-backdrop-filter: blur(12px) saturate(170%) brightness(0.45); backdrop-filter: blur(12px) saturate(170%) brightness(0.45); }
 html:not(.frosted) .w-weather { background: color-mix(in srgb, var(--skyc) 60%, transparent); }
 .dock-pill { background: rgba(255, 255, 255, 0.34); }
 [data-theme="dark"] .dock-pill { background: rgba(255, 255, 255, 0.12); }
@@ -603,5 +605,33 @@ html:not(.frosted) .w-weather { background: color-mix(in srgb, var(--skyc) 60%, 
 html.frosted { --glass: rgba(255, 255, 255, 0.62); --glass-strong: rgba(255, 255, 255, 0.78); --blur: blur(30px) saturate(190%) brightness(1.04); }
 html.frosted[data-theme="dark"] { --glass: rgba(26, 30, 48, 0.62); --glass-strong: rgba(26, 30, 48, 0.82); --blur: blur(30px) saturate(160%); }
 /* Light mode: the weather card's white text needs a deeper tint behind it */
-html:not(.frosted):not([data-theme="dark"]) .w-weather { background: color-mix(in srgb, var(--skyc) 70%, transparent); }
-html.liquid:not(.lite):not([data-theme="dark"]) .w-weather { -webkit-backdrop-filter: url(#lg) blur(12px) saturate(170%) brightness(0.55); backdrop-filter: url(#lg) blur(12px) saturate(170%) brightness(0.55); }
+html:not(.frosted):not([data-theme="dark"]) .w-weather { background: color-mix(in srgb, var(--skyc) 86%, transparent); }
+
+/* ---------- Living glass ---------- */
+/* A soft specular highlight inside each panel that drifts with tilt/scroll (behind the text). */
+.glint { position: absolute; z-index: -1; pointer-events: none; will-change: transform; left: 14%; top: 4px; width: 52%; height: 26px; border-radius: 50%; background: rgba(255, 255, 255, 0.7); filter: blur(16px); opacity: 0.55; }
+[data-theme="dark"] .glint { background: rgba(255, 255, 255, 0.5); opacity: 0.2; }
+.w-weather .glint { opacity: 0.16; }
+.dock .glint { top: 2px; height: 18px; }
+.in-sheet .glint, html.frosted .glint, .lite .glint, .morphing .glint { display: none; }
+/* Thicker glass: layered contact + ambient shadow and a brighter lower edge. */
+:root { --lift: 0 1px 1px rgba(30, 40, 100, 0.08), 0 6px 14px -6px rgba(30, 40, 100, 0.22), 0 22px 44px -18px rgba(30, 40, 110, 0.38); }
+:root[data-theme="dark"] { --lift: 0 1px 1px rgba(0, 0, 0, 0.35), 0 8px 16px -6px rgba(0, 0, 0, 0.5), 0 26px 50px -18px rgba(0, 0, 0, 0.75); }
+html:not(.frosted) { --rim: inset 0 0 0 2.5px rgba(20, 30, 80, 0.035), inset 1.5px 1.5px 0 -0.5px rgba(255, 255, 255, 0.98), inset -1px -1px 0 -0.5px rgba(255, 255, 255, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.3), inset 0 -10px 18px -12px rgba(255, 255, 255, 0.55), inset 0 0 22px rgba(255, 255, 255, 0.2); }
+html[data-theme="dark"]:not(.frosted) { --rim: inset 0 0 0 2.5px rgba(0, 0, 0, 0.18), inset 1.5px 1.5px 0 -0.5px rgba(255, 255, 255, 0.55), inset -1px -1px 0 -0.5px rgba(255, 255, 255, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.11), inset 0 -10px 18px -12px rgba(255, 255, 255, 0.2), inset 0 0 22px rgba(255, 255, 255, 0.07); }
+/* Sliding glass thumb for switches */
+.seg { position: relative; }
+.seg-thumb { position: absolute; top: 3px; bottom: 3px; left: 0; width: var(--w, 0); translate: var(--x, 0) 0; border-radius: 999px; background: var(--pill); box-shadow: var(--pill-shadow); transition: translate 0.6s var(--spring), width 0.6s var(--spring); pointer-events: none; }
+.seg:has(.seg-thumb) button { position: relative; z-index: 1; }
+.seg:has(.seg-thumb) button.on { background: transparent; box-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .aurora i, .glint { transform: none !important; } }
+
+
+/* ---------- Wide screens (e.g. Galaxy Z Fold unfolded, tablets) ---------- */
+@media (min-width: 700px) {
+  .app { max-width: 1000px; padding-left: 24px; padding-right: 24px; }
+  .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .widget { grid-column: span 2; }
+  .widget.size-half { grid-column: span 1; }
+  .top, .editbar, .tip, .install { max-width: 680px; }
+}

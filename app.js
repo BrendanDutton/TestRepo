@@ -391,12 +391,8 @@ for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('c
 
 /* ---------- theme ---------- */
 const darkMq = matchMedia('(prefers-color-scheme: dark)');
-// Refraction needs SVG filters in backdrop-filter, which only Chromium browsers (Chrome, Brave, Edge…) support.
-const canRefract = !!(navigator.userAgentData && navigator.userAgentData.brands.some((b) => /Chromium|Chrome/.test(b.brand)));
 function applyGlass() {
-  const root = document.documentElement;
-  root.classList.toggle('frosted', state.glass === 'frosted');
-  root.classList.toggle('liquid', state.glass !== 'frosted' && canRefract);
+  document.documentElement.classList.toggle('frosted', state.glass === 'frosted');
 }
 applyGlass();
 function applyTheme() {
@@ -599,11 +595,35 @@ function renderTodosSoon(ms) {
 }
 function afterTaskChange() { refresh('progress', 'week'); renderSummary(); }
 
+// "buy milk" -> "Buy milk"
+const capFirst = (s) => s.charAt(0).toLocaleUpperCase() + s.slice(1);
 function addTask(text) {
-  const task = { id: uid(), text, done: false, doneAt: null };
+  const task = { id: uid(), text: capFirst(text), done: false, doneAt: null };
   state.tasks.push(task);
   enterId = task.id;
   save(); refresh('todo'); afterTaskChange();
+}
+// Swap the task's text for an input; Enter or tapping away saves, Esc cancels.
+function editTask(id, btn) {
+  const t = state.tasks.find((x) => x.id === id);
+  if (!t || editing) return;
+  const input = h('input', { type: 'text', class: 't-edit', value: t.text, maxlength: '200', 'aria-label': 'Edit task', enterkeyhint: 'done', autocapitalize: 'sentences' });
+  let finished = false;
+  const finish = (keep) => {
+    if (finished) return;
+    finished = true;
+    const v = capFirst(input.value.trim());
+    if (keep && v && v !== t.text) { t.text = v; save(); buzz(8); }
+    refresh('todo'); renderSummary();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  btn.replaceWith(input);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
 }
 function toggleTask(id) {
   const t = state.tasks.find((x) => x.id === id);
@@ -674,7 +694,8 @@ function morph(sec, item) {
   const h1 = sec.getBoundingClientRect().height;
   if (Math.abs(h1 - h0) < 1) return;
   sec.style.overflow = 'hidden';
-  const done = () => { sec.style.overflow = ''; };
+  sec.classList.add('morphing');
+  const done = () => { sec.style.overflow = ''; sec.classList.remove('morphing'); };
   sec.animate([{ height: `${h0}px` }, { height: `${h1}px` }], { duration: 650, easing: springEase() }).finished.then(done, done);
 }
 function morphWidgets(type) {
@@ -1040,6 +1061,7 @@ W.schedule = {
   update(body) {
     const week = calMode === 'week';
     for (const b of body.querySelectorAll('.cal-mode button')) { const on = b.dataset.v === calMode; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); }
+    raf2(() => syncSeg(body.querySelector('.cal-mode')));
     body.querySelector('.cal-prev').setAttribute('aria-label', week ? 'Previous week' : 'Previous day');
     body.querySelector('.cal-next').setAttribute('aria-label', week ? 'Next week' : 'Next day');
     swapText(body.querySelector('.dl-name'), week ? weekLabel(viewDay) : dayLabel(viewDay));
@@ -1094,7 +1116,7 @@ W.todo = {
   name: 'To-do', desc: 'Your task list', icon: 'check', chip: 'c-green', sizes: ['full'],
   actions: () => [h('span', { class: 'w-count muted small-text' })],
   mount(body) {
-    const input = h('input', { type: 'text', placeholder: 'Add a task', 'aria-label': 'New task', maxlength: '200', enterkeyhint: 'done' });
+    const input = h('input', { type: 'text', placeholder: 'Add a task', 'aria-label': 'New task', maxlength: '200', enterkeyhint: 'done', autocapitalize: 'sentences' });
     body.append(
       h('form', { class: 'add-row', autocomplete: 'off', onsubmit: (e) => { e.preventDefault(); const v = input.value.trim(); if (!v) return; input.value = ''; addTask(v); } },
         input, h('button', { type: 'submit', class: 'primary', 'aria-label': 'Add task' }, ic('plus'))),
@@ -1110,10 +1132,10 @@ W.todo = {
     if (!state.tasks.length) list.append(h('li', { class: 'empty' }, 'Nothing to do yet.'));
     else if (!open.length) list.append(h('li', { class: 'empty' }, '🎉 All done. Nice work!'));
     const row = (t) => h('li', { class: `todo${t.done ? ' done' : ''}${t.id === enterId ? ' enter' : ''}`, 'data-id': t.id },
-      h('label', {},
-        h('input', { type: 'checkbox', class: 'cb', checked: t.done, onchange: () => toggleTask(t.id) }),
-        h('span', { class: 'box' }, ic('check')),
-        h('span', { class: 't' }, t.text)),
+      h('label', { class: 'todo-check', title: t.done ? 'Mark as not done' : 'Mark as done' },
+        h('input', { type: 'checkbox', class: 'cb', checked: t.done, 'aria-label': `${t.text}: ${t.done ? 'done' : 'not done'}`, onchange: () => toggleTask(t.id) }),
+        h('span', { class: 'box' }, ic('check'))),
+      h('button', { type: 'button', class: 't', title: 'Tap to edit', 'aria-label': `Edit task: ${t.text}`, onclick: (e) => editTask(t.id, e.currentTarget) }, t.text),
       h('button', { class: 'x-btn', 'aria-label': `Delete ${t.text}`, onclick: () => removeTask(t.id) }, ic('x')));
     open.forEach((t) => list.append(row(t)));
     if (done.length) {
@@ -1379,6 +1401,7 @@ function widgetEl(item) {
   const grip = h('button', { type: 'button', class: 'w-ctl w-grip', 'aria-label': `Drag to move ${def.name}`, title: 'Drag to move' }, ic('grip'));
   grip.addEventListener('pointerdown', (e) => startDrag(e, sec));
   sec.append(
+    h('span', { class: 'glint', 'aria-hidden': 'true', style: typeof lc === 'undefined' ? '' : `transform:${glintPos()}` }),
     h('div', { class: 'w-edit' }, h('div', { class: 'w-edit-inner' },
       grip,
       h('span', { class: 'w-edit-name' }, def.name),
@@ -1714,9 +1737,10 @@ $('#set-unit').addEventListener('click', (e) => {
 });
 $('#set-glass').addEventListener('click', (e) => {
   const v = e.target.closest('button')?.dataset.v;
-  if (!v || v === state.glass) return;
+  if (!v) return;
   state.glass = v; save(); applyGlass(); renderSettings();
 });
+
 $('#set-clock').addEventListener('click', (e) => {
   const v = e.target.closest('button')?.dataset.v;
   if (!v || v === state.clock) return;
@@ -1752,6 +1776,8 @@ const dock = $('#dock');
 const dockPill = dock.querySelector('.dock-pill');
 function setDock(which) {
   const btn = which === 'edit' ? $('#dock-edit') : $('#dock-home');
+  const moved = dockPill.style.getPropertyValue('--x') && dockPill.style.getPropertyValue('--x') !== `${btn.offsetLeft}px`;
+  if (moved) stretch(dockPill);
   dockPill.style.setProperty('--x', `${btn.offsetLeft}px`);
   dockPill.style.setProperty('--w', `${btn.offsetWidth}px`);
   $('#dock-home').classList.toggle('on', which !== 'edit');
@@ -1766,6 +1792,67 @@ addEventListener('resize', () => setDock(editing ? 'edit' : 'home'));
 addEventListener('load', () => setDock(editing ? 'edit' : 'home'));
 // Low-end phones skip the expensive blur and use solid frosted panels instead.
 if ((navigator.deviceMemory && navigator.deviceMemory <= 2) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)) document.documentElement.classList.add('lite');
+
+/* ---------- living glass ---------- */
+// The highlight on every glass panel and the shapes behind it follow the phone's tilt (or the
+// mouse / scrolling when there's no tilt sensor), so the glass catches moving light.
+let lt = { x: 0, y: 0 }, lc = { x: 0, y: 0 }, lightRaf = 0, tilted = false;
+function aimLight(x, y) {
+  if (reduceMotion.matches) return;
+  lt = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
+  if (!lightRaf) lightRaf = requestAnimationFrame(stepLight);
+}
+// Only the handful of lit elements are touched each frame (a page-wide CSS variable would
+// make the browser restyle everything and stutter).
+const glintPos = () => `translate(${(lc.x * 34).toFixed(1)}%, ${(lc.y * 5).toFixed(1)}px)`;
+function stepLight() {
+  lc.x += (lt.x - lc.x) * 0.1; lc.y += (lt.y - lc.y) * 0.1;
+  const g = glintPos();
+  for (const el of document.querySelectorAll('.glint')) el.style.transform = g;
+  lightRaf = Math.abs(lt.x - lc.x) + Math.abs(lt.y - lc.y) > 0.003 ? requestAnimationFrame(stepLight) : 0;
+}
+addEventListener('deviceorientation', (e) => {
+  if (e.gamma == null || e.beta == null) return;
+  tilted = true;
+  aimLight(e.gamma / 25, (e.beta - 45) / 25); // phone held at a normal reading angle = centred
+});
+addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' && !tilted) aimLight((e.clientX / innerWidth - 0.5) * 2, (e.clientY / innerHeight - 0.5) * 2); }, { passive: true });
+// Depth: the shapes behind the glass drift at different speeds as you scroll.
+const shapes = [...document.querySelectorAll('.aurora i')];
+const DEPTH = [0.05, 0.12, 0.03, 0.2, 0.15];
+let scrollRaf = 0;
+addEventListener('scroll', () => {
+  if (!tilted) aimLight(Math.sin(scrollY / 520) * 0.7, Math.cos(scrollY / 700) * 0.5);
+  if (reduceMotion.matches || scrollRaf) return;
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = 0;
+    const y = Math.min(scrollY, 4000);
+    shapes.forEach((el, i) => { el.style.transform = `translate3d(0, ${(-y * DEPTH[i]).toFixed(1)}px, 0)`; });
+  });
+}, { passive: true });
+
+// A quick droplet-like stretch when a glass pill slides to a new spot.
+function stretch(el) {
+  if (reduceMotion.matches) return;
+  el.animate([{ scale: '1 1' }, { scale: '1.22 0.86', offset: 0.35 }, { scale: '0.96 1.04', offset: 0.7 }, { scale: '1 1' }], { duration: 650, easing: 'ease-out' });
+}
+// Segmented switches (Day/Week, Settings) get a sliding glass thumb.
+function syncSeg(seg) {
+  let thumb = seg.querySelector('.seg-thumb');
+  if (!thumb) { thumb = h('span', { class: 'seg-thumb', 'aria-hidden': 'true' }); seg.prepend(thumb); }
+  const on = seg.querySelector('button.on');
+  if (!on || !on.offsetWidth) return;
+  const x = `${on.offsetLeft}px`;
+  if (thumb.style.getPropertyValue('--x') && thumb.style.getPropertyValue('--x') !== x) stretch(thumb);
+  thumb.style.setProperty('--x', x);
+  thumb.style.setProperty('--w', `${on.offsetWidth}px`);
+}
+// Re-place thumbs whenever a switch's selected button changes (and when sheets open).
+new MutationObserver((muts) => {
+  for (const m of muts) if (m.target.closest && m.target.closest('.seg') && m.attributeName === 'class') syncSeg(m.target.closest('.seg'));
+}).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+for (const d of document.querySelectorAll('dialog')) d.addEventListener('toggle', () => { if (d.open) for (const s of d.querySelectorAll('.seg')) syncSeg(s); });
+addEventListener('resize', () => { for (const s of document.querySelectorAll('.seg')) syncSeg(s); });
 
 /* ---------- header ---------- */
 function renderHeader() {
