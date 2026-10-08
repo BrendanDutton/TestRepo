@@ -33,6 +33,59 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const raf2 = (fn) => requestAnimationFrame(() => requestAnimationFrame(fn));
+const buzz = (ms = 12) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch { /* unsupported */ } };
+
+// Inline SVG icon from the sprite in index.html.
+function ic(name, cls = 'ic') {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', cls);
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#i-${name}`);
+  svg.append(use);
+  return svg;
+}
+
+// Count a number up/down smoothly (instant with reduced motion).
+function tween(el, to, fmt = (v) => String(Math.round(v)), ms = 650) {
+  const from = el._v ?? 0;
+  el._v = to;
+  cancelAnimationFrame(el._raf);
+  if (reduceMotion.matches || from === to) { el.textContent = fmt(to); return; }
+  const t0 = performance.now();
+  const step = (t) => {
+    const p = Math.min(1, (t - t0) / ms);
+    el.textContent = fmt(from + (to - from) * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) el._raf = requestAnimationFrame(step);
+  };
+  el._raf = requestAnimationFrame(step);
+}
+
+// Fade/slide a text change in.
+function swapText(el, text) {
+  if (el.textContent === text) return;
+  el.textContent = text;
+  if (!reduceMotion.matches && el.animate) el.animate([{ opacity: 0, transform: 'translateY(5px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' });
+}
+
+// Close a <dialog> with its exit animation.
+function closeDlg(d) {
+  if (!d.open) return;
+  if (reduceMotion.matches) { d.close(); return; }
+  d.classList.add('closing');
+  setTimeout(() => { d.classList.remove('closing'); d.close(); }, 190);
+}
+for (const d of document.querySelectorAll('dialog')) d.addEventListener('click', (e) => { if (e.target === d) closeDlg(d); });
+
+// Hue from a string, so each event keeps a stable colour.
+function evColor(title) {
+  let n = 0;
+  for (const ch of title) n = (n * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${n} 68% 58%)`;
+}
+
 /* ---------- state ---------- */
 const KEY = 'my-day.v1';
 const defaults = () => ({
@@ -273,14 +326,30 @@ const WMO = {
 };
 const wmo = (code) => WMO[code] || ['🌡️', 'Unknown'];
 const locKey = () => (state.loc ? `${state.loc.lat.toFixed(2)},${state.loc.lon.toFixed(2)},${state.unit}` : '');
+const deg = (v) => `${Math.round(v)}°`;
 let weatherFailed = false;
 let weatherLoading = false;
+let syncing = false;
+
+// Spin the refresh icon while anything is loading.
+const updateBusy = () => $('#refresh').classList.toggle('spin', weatherLoading || syncing);
+
+function skyFor(code, isDay) {
+  if (code >= 95) return 'storm';
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return 'snow';
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
+  if (code === 45 || code === 48) return 'fog';
+  if (!isDay) return 'night';
+  return code <= 1 ? 'clear' : 'cloudy';
+}
 
 async function fetchWeather(force = false) {
   if (!state.loc || weatherLoading) return;
   const w = state.weather;
   if (!force && w && w.key === locKey() && Date.now() - w.at < 10 * 60 * 1000) return;
   weatherLoading = true;
+  updateBusy();
+  renderHero();
   const imperial = state.unit === 'fahrenheit';
   const q = new URLSearchParams({
     latitude: state.loc.lat,
@@ -303,6 +372,7 @@ async function fetchWeather(force = false) {
     weatherFailed = true;
   } finally {
     weatherLoading = false;
+    updateBusy();
   }
   renderWeather();
   renderStats();
@@ -313,40 +383,71 @@ function currentWeather() {
   return w && w.key === locKey() ? w.data : null;
 }
 
+// Top-of-page summary: sky colour, big temperature, conditions, place.
+let heroIcon = '';
+function renderHero() {
+  const hero = $('#hero');
+  const data = currentWeather();
+  if (!data) {
+    hero.dataset.sky = 'default';
+    $('#hero-temp').textContent = '--°';
+    $('#hero-icon').textContent = '⛅';
+    heroIcon = '';
+    $('#hero-desc').textContent = !state.loc ? 'Set your location to see the weather'
+      : weatherFailed ? 'Weather unavailable right now' : 'Loading weather…';
+    $('#hero-place').textContent = '';
+    return;
+  }
+  const c = data.current;
+  const [icon, label] = wmo(c.weather_code);
+  hero.dataset.sky = skyFor(c.weather_code, c.is_day);
+  $('#hero-temp').textContent = deg(c.temperature_2m);
+  $('#hero-desc').textContent = `${label} · feels like ${deg(c.apparent_temperature)}`;
+  const el = $('#hero-icon');
+  el.textContent = icon;
+  if (icon !== heroIcon) {
+    heroIcon = icon;
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  }
+  const where = state.loc && state.loc.name ? `${state.loc.name} · ` : '';
+  $('#hero-place').textContent = `${where}${weatherFailed ? 'offline, last updated' : 'updated'} ${fmtTime(state.weather.at)}`;
+}
+
+let wxAnimated = false;
 function renderWeather() {
+  renderHero();
   const body = $('#weather-body');
   body.replaceChildren();
+  body.classList.remove('animate');
   if (!state.loc) {
     body.append(h('div', { class: 'notice' },
       'Add your location to see the forecast.',
-      h('br'),
-      h('button', { class: 'primary', onclick: openLocation }, 'Set location')));
+      h('button', { class: 'primary', onclick: openLocation }, ic('pin', 'ic sm'), 'Set location')));
     return;
   }
   const data = currentWeather();
   if (!data) {
-    body.append(h('p', { class: 'notice' }, weatherFailed ? 'Couldn’t load the weather. Check your connection and tap ↻.' : 'Loading weather…'));
+    if (weatherFailed) {
+      body.append(h('p', { class: 'notice' }, 'Couldn’t load the weather. Check your connection and tap the refresh button.'));
+    } else {
+      body.append(h('div', { class: 'skel-grid' }, h('div', { class: 'skel' }), h('div', { class: 'skel' }), h('div', { class: 'skel' })),
+        h('div', { class: 'skel skel-row' }));
+    }
     return;
   }
   const c = data.current, d = data.daily;
-  const [icon, label] = wmo(c.weather_code);
-  const deg = (v) => `${Math.round(v)}°`;
   const wind = `${Math.round(c.wind_speed_10m)} ${data.current_units.wind_speed_10m === 'mp/h' ? 'mph' : 'km/h'}`;
   const hm = (iso) => fmtTime(new Date(iso).getTime());
+  let k = 0;
+  const cell = (value, name) => h('div', { style: `--k:${k++}` }, h('b', {}, value), h('span', {}, name));
 
-  body.append(
-    h('div', { class: 'wx-main' },
-      h('div', { class: 'wx-icon', 'aria-hidden': 'true' }, icon),
-      h('div', {},
-        h('div', { class: 'wx-temp' }, deg(c.temperature_2m)),
-        h('div', { class: 'wx-desc' }, `${label} · feels ${deg(c.apparent_temperature)}`))),
-    h('div', { class: 'wx-grid' },
-      cell(`${deg(d.temperature_2m_max[0])} / ${deg(d.temperature_2m_min[0])}`, 'High / Low'),
-      cell(`${d.precipitation_probability_max[0] ?? 0}%`, 'Rain'),
-      cell(wind, 'Wind'),
-      cell(`${c.relative_humidity_2m}%`, 'Humidity'),
-      cell(hm(d.sunrise[0]), 'Sunrise'),
-      cell(hm(d.sunset[0]), 'Sunset')));
+  body.append(h('div', { class: 'wx-grid' },
+    cell(`${deg(d.temperature_2m_max[0])}/${deg(d.temperature_2m_min[0])}`, 'High / Low'),
+    cell(`${d.precipitation_probability_max[0] ?? 0}%`, 'Rain chance'),
+    cell(wind, 'Wind'),
+    cell(`${c.relative_humidity_2m}%`, 'Humidity'),
+    cell(hm(d.sunrise[0]), 'Sunrise'),
+    cell(hm(d.sunset[0]), 'Sunset')));
 
   // Next 8 hours (hourly times are in the location's timezone, same as current.time).
   const nowHour = c.time.slice(0, 13);
@@ -355,18 +456,14 @@ function renderWeather() {
   for (let i = start; i < Math.min(start + 8, data.hourly.time.length); i++) {
     const hr = new Date(data.hourly.time[i]);
     const p = data.hourly.precipitation_probability[i];
-    strip.append(h('div', { class: 'hour' },
+    strip.append(h('div', { class: 'hour', style: `--k:${i - start + 3}` },
       h('span', {}, i === start ? 'Now' : hr.toLocaleTimeString([], { hour: 'numeric' })),
       h('span', { class: 'h-ico', 'aria-hidden': 'true' }, wmo(data.hourly.weather_code[i])[0]),
       h('b', {}, deg(data.hourly.temperature_2m[i])),
       h('div', { class: 'h-rain' }, p >= 20 ? `${p}%` : '')));
   }
   body.append(strip);
-  const where = state.loc.name ? `${state.loc.name} · ` : '';
-  const stale = weatherFailed ? ' (offline, showing last update)' : '';
-  body.append(h('p', { class: 'muted small-text', style: 'margin-top:8px' }, `${where}updated ${fmtTime(state.weather.at)}${stale}`));
-
-  function cell(value, name) { return h('div', {}, h('b', {}, value), h('span', {}, name)); }
+  if (!wxAnimated) { wxAnimated = true; body.classList.add('animate'); } // entrance only the first time
 }
 
 /* ---------- location ---------- */
@@ -380,7 +477,7 @@ function setLocation(loc) {
   state.loc = loc;
   state.weather = null;
   save();
-  locDialog.close();
+  closeDlg(locDialog);
   renderWeather();
   fetchWeather(true);
 }
@@ -415,7 +512,7 @@ $('#loc-form').addEventListener('submit', async (e) => {
     msg.textContent = 'Search failed. Check your connection.';
   }
 });
-$('#loc-close').addEventListener('click', () => locDialog.close());
+$('#loc-close').addEventListener('click', () => closeDlg(locDialog));
 $('#change-location').addEventListener('click', openLocation);
 
 // When the location came from GPS, quietly follow you as you move (only if permission was
@@ -448,23 +545,37 @@ async function refreshAutoLocation() {
 const refreshWeather = (force = false) => refreshAutoLocation().then(() => fetchWeather(force));
 
 /* ---------- to-do ---------- */
+let enterId = null;   // task row that should slide in after the next render
+let todoTimer = null;
+
 function renderTodos() {
+  clearTimeout(todoTimer);
   const list = $('#todos');
   list.replaceChildren();
   const open = state.tasks.filter((t) => !t.done);
   const done = state.tasks.filter((t) => t.done);
   $('#todo-count').textContent = state.tasks.length ? `${open.length} open` : '';
-  if (!state.tasks.length) list.append(h('li', { class: 'empty' }, 'Nothing to do. Add your first task above.'));
-  const row = (t) => h('li', { class: `todo${t.done ? ' done' : ''}` },
+  if (!state.tasks.length) list.append(h('li', { class: 'empty' }, 'Nothing here yet. Add your first task above.'));
+  else if (!open.length) list.append(h('li', { class: 'empty' }, '🎉 Everything’s done. Nice work!'));
+  const row = (t) => h('li', { class: `todo${t.done ? ' done' : ''}${t.id === enterId ? ' enter' : ''}`, 'data-id': t.id },
     h('label', {},
-      h('input', { type: 'checkbox', checked: t.done, onchange: () => toggleTask(t.id) }),
-      h('span', {}, t.text)),
-    h('button', { class: 'x-btn', 'aria-label': `Delete ${t.text}`, onclick: () => removeTask(t.id) }, '✕'));
+      h('input', { type: 'checkbox', class: 'cb', checked: t.done, onchange: () => toggleTask(t.id) }),
+      h('span', { class: 'box' }, ic('check')),
+      h('span', { class: 't' }, t.text)),
+    h('button', { class: 'x-btn', 'aria-label': `Delete ${t.text}`, onclick: () => removeTask(t.id) }, ic('x')));
   open.forEach((t) => list.append(row(t)));
   if (done.length) {
     list.append(h('li', { class: 'sep' }, 'Done today'));
     done.forEach((t) => list.append(row(t)));
   }
+  enterId = null;
+}
+
+// Let the check animation finish before the row moves to its new spot.
+function renderTodosSoon(ms) {
+  clearTimeout(todoTimer);
+  if (reduceMotion.matches) { renderTodos(); return; }
+  todoTimer = setTimeout(renderTodos, ms);
 }
 
 function toggleTask(id) {
@@ -474,11 +585,14 @@ function toggleTask(id) {
   if (!t.done) {
     t.done = true; t.doneAt = Date.now();
     state.history[today] = (state.history[today] || 0) + 1;
+    buzz(14);
   } else {
     if (t.doneAt && dayKey(new Date(t.doneAt)) === today) state.history[today] = Math.max(0, (state.history[today] || 1) - 1);
     t.done = false; t.doneAt = null;
+    buzz(8);
   }
-  save(); renderTodos(); renderStats(); renderWeek();
+  enterId = id;
+  save(); renderTodosSoon(520); renderStats(); renderWeek();
 }
 
 function removeTask(id) {
@@ -489,7 +603,14 @@ function removeTask(id) {
     state.history[k] = Math.max(0, (state.history[k] || 1) - 1);
   }
   state.tasks = state.tasks.filter((x) => x.id !== id);
-  save(); renderTodos(); renderStats(); renderWeek();
+  const li = document.querySelector(`#todos li[data-id="${id}"]`);
+  if (li && !reduceMotion.matches) {
+    li.style.height = `${li.offsetHeight}px`;
+    void li.offsetHeight;
+    li.classList.add('removing');
+  }
+  buzz(8);
+  save(); renderTodosSoon(260); renderStats(); renderWeek();
 }
 
 $('#todo-form').addEventListener('submit', (e) => {
@@ -497,7 +618,9 @@ $('#todo-form').addEventListener('submit', (e) => {
   const input = $('#todo-input');
   const text = input.value.trim();
   if (!text) return;
-  state.tasks.push({ id: uid(), text, done: false, doneAt: null });
+  const task = { id: uid(), text, done: false, doneAt: null };
+  state.tasks.push(task);
+  enterId = task.id;
   input.value = '';
   save(); renderTodos(); renderStats();
 });
@@ -513,25 +636,31 @@ function dayLabel(d) {
   return d.toLocaleDateString([], { weekday: 'long' });
 }
 
-function renderSchedule() {
-  $('#sched-h').textContent = dayLabel(viewDay);
-  $('#sched-date').textContent = viewDay.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+// dir: -1 = came from an earlier day, 1 = later day, 0 = plain refresh (no animation)
+function renderSchedule(dir = 0) {
+  swapText($('#sched-h'), dayLabel(viewDay));
+  swapText($('#sched-date'), viewDay.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }));
   const list = $('#schedule');
-  list.className = 'list sched';
+  list.className = `list sched${dir > 0 ? ' swap-l' : dir < 0 ? ' swap-r' : ''}`;
   list.replaceChildren();
   const items = eventsOn(viewDay);
-  if (!items.length) { list.append(h('li', { class: 'empty' }, 'Nothing scheduled.')); return; }
+  if (!items.length) {
+    list.append(h('li', { class: 'empty' }, dayKey(viewDay) === dayKey(new Date()) ? 'Nothing scheduled today. Enjoy the free time.' : 'Nothing scheduled.'));
+    return;
+  }
   const now = Date.now();
-  for (const { ev, s, e } of items) {
+  items.forEach(({ ev, s, e }, i) => {
     const isNow = !ev.allDay && s <= now && now < e;
     const isPast = !ev.allDay && Math.max(e, s + 1) <= now;
-    list.append(h('li', { class: `${isNow ? 'now' : ''} ${isPast ? 'past' : ''}` },
+    let sub = null;
+    if (isNow) sub = h('div', { class: 's-sub' }, h('span', { class: 'live-dot' }), `Now · until ${fmtTime(e)}${ev.rr ? ' · repeats' : ''}`);
+    else if (!ev.allDay && e > s) sub = h('div', { class: 's-sub' }, `until ${fmtTime(e)}${ev.rr ? ' · repeats' : ''}`);
+    else if (ev.rr) sub = h('div', { class: 's-sub' }, 'repeats');
+    list.append(h('li', { class: `${isNow ? 'now' : ''} ${isPast ? 'past' : ''}`.trim(), style: `--i:${i};--ev:${evColor(ev.title)}` },
       h('div', { class: 's-time' }, ev.allDay ? 'All day' : fmtTime(s)),
-      h('div', { class: 's-body' },
-        h('div', { class: 's-title' }, ev.title),
-        !ev.allDay && e > s ? h('div', { class: 's-sub' }, `until ${fmtTime(e)}${ev.rr ? ' · repeats' : ''}`) : (ev.rr ? h('div', { class: 's-sub' }, 'repeats') : null)),
-      h('button', { class: 'x-btn', 'aria-label': `Remove ${ev.title}`, onclick: () => removeEvent(ev) }, '✕')));
-  }
+      h('div', { class: 's-body' }, h('div', { class: 's-title' }, ev.title), sub),
+      h('button', { class: 'x-btn', 'aria-label': `Remove ${ev.title}`, onclick: () => removeEvent(ev) }, ic('x'))));
+  });
 }
 
 function removeEvent(ev) {
@@ -540,9 +669,16 @@ function removeEvent(ev) {
   save(); renderSchedule(); renderStats();
 }
 
-$('#day-prev').addEventListener('click', () => { viewDay = addDays(viewDay, -1); renderSchedule(); });
-$('#day-next').addEventListener('click', () => { viewDay = addDays(viewDay, 1); renderSchedule(); });
-$('#sched-h').addEventListener('click', () => { viewDay = startOfDay(new Date()); renderSchedule(); });
+function goToDay(d) {
+  const dir = d > viewDay ? 1 : d < viewDay ? -1 : 0;
+  viewDay = d;
+  renderSchedule(dir);
+}
+$('#day-prev').addEventListener('click', () => goToDay(addDays(viewDay, -1)));
+$('#day-next').addEventListener('click', () => goToDay(addDays(viewDay, 1)));
+const backToToday = () => goToDay(startOfDay(new Date()));
+$('#sched-h').addEventListener('click', backToToday);
+$('#sched-h').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); backToToday(); } });
 
 // Add-event dialog
 const evDialog = $('#event-dialog');
@@ -560,7 +696,7 @@ $('#add-event').addEventListener('click', () => {
   $('#ev-times').hidden = false;
   evDialog.showModal();
 });
-$('#ev-cancel').addEventListener('click', () => evDialog.close());
+$('#ev-cancel').addEventListener('click', () => closeDlg(evDialog));
 $('#event-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const date = $('#ev-date').value;
@@ -576,9 +712,11 @@ $('#event-form').addEventListener('submit', (e) => {
   }
   if (Number.isNaN(start)) { toast('Pick a valid date'); return; }
   state.events.push({ id: uid(), title: $('#ev-title').value.trim() || '(No title)', start, end, allDay, src: 'manual', rr: null });
-  save(); evDialog.close();
-  viewDay = startOfDay(new Date(start));
-  renderSchedule(); renderStats();
+  save(); closeDlg(evDialog);
+  const day = startOfDay(new Date(start));
+  const dir = day > viewDay ? 1 : day < viewDay ? -1 : 1;
+  viewDay = day;
+  renderSchedule(dir); renderStats();
 });
 
 // ICS import
@@ -592,7 +730,7 @@ $('#ics-file').addEventListener('change', async (e) => {
     const events = parseICS(await file.text(), 'ics');
     if (!events.length) { toast('No events found in that file'); return; }
     state.events = state.events.filter((x) => x.src !== 'ics').concat(events);
-    save(); renderSchedule(); renderStats();
+    save(); renderSchedule(1); renderStats();
     toast(`Imported ${events.length} event${events.length === 1 ? '' : 's'}`);
   } catch {
     toast('Couldn’t read that file');
@@ -600,7 +738,6 @@ $('#ics-file').addEventListener('change', async (e) => {
 });
 
 /* ---------- Google Calendar sync (via the relay in worker/) ---------- */
-let syncing = false;
 let syncError = '';
 
 function renderSyncStatus() {
@@ -616,6 +753,7 @@ async function syncCalendar(force = false) {
   if (!s || !s.url || syncing) return null;
   if (!force && s.at && Date.now() - s.at < 5 * 60 * 1000) return null;
   syncing = true;
+  updateBusy();
   try {
     const res = await fetch(s.url, { cache: 'no-store' });
     if (res.status === 401) throw new Error('The access key in the link was rejected.');
@@ -633,6 +771,7 @@ async function syncCalendar(force = false) {
     return null;
   } finally {
     syncing = false;
+    updateBusy();
     renderSchedule(); renderStats(); renderSyncStatus();
   }
 }
@@ -645,13 +784,13 @@ $('#google-sync').addEventListener('click', () => {
   $('#sync-disconnect').hidden = !state.sync;
   syncDialog.showModal();
 });
-$('#sync-close').addEventListener('click', () => syncDialog.close());
+$('#sync-close').addEventListener('click', () => closeDlg(syncDialog));
 $('#sync-disconnect').addEventListener('click', () => {
   state.sync = null;
   state.events = state.events.filter((x) => x.src !== 'sync');
   syncError = '';
   save(); renderSchedule(); renderStats(); renderSyncStatus();
-  syncDialog.close();
+  closeDlg(syncDialog);
   toast('Google Calendar disconnected');
 });
 $('#sync-form').addEventListener('submit', async (e) => {
@@ -666,7 +805,7 @@ $('#sync-form').addEventListener('submit', async (e) => {
   msg.textContent = 'Syncing…';
   const n = await syncCalendar(true);
   if (n == null) { msg.textContent = syncError.replace(' Showing the last sync.', ''); msg.classList.add('err'); save(); return; }
-  syncDialog.close();
+  closeDlg(syncDialog);
   toast(`Synced ${n} calendar event${n === 1 ? '' : 's'}`);
 });
 
@@ -675,37 +814,39 @@ const CIRC = 2 * Math.PI * 26;
 
 function renderStats() {
   const doneToday = state.tasks.filter((t) => t.done).length;
-  const open = state.tasks.length - doneToday;
-  const total = doneToday + open;
+  const total = state.tasks.length;
   const pct = total ? Math.round((doneToday / total) * 100) : 0;
-  $('#stat-progress').textContent = `${pct}%`;
-  $('#stat-tasks').textContent = total ? `${doneToday} of ${total} tasks done` : 'No tasks yet';
-  $('#ring-fg').setAttribute('stroke-dasharray', `${(pct / 100) * CIRC} ${CIRC}`);
+  tween($('#stat-progress'), pct, (v) => `${Math.round(v)}%`);
+  raf2(() => $('#ring-fg').setAttribute('stroke-dasharray', `${(pct / 100) * CIRC} ${CIRC}`));
+  $('#stat-tasks-value').textContent = total ? `${doneToday} of ${total}` : '–';
+  $('#stat-tasks').textContent = !total ? 'No tasks yet' : doneToday === total ? 'All done today' : 'tasks done';
 
   const todays = eventsOn(new Date());
-  $('#stat-events').textContent = todays.length;
+  tween($('#stat-events'), todays.length);
 
   const data = currentWeather();
   if (data) {
-    $('#stat-temp').textContent = `${Math.round(data.current.temperature_2m)}°`;
-    $('#stat-temp-label').textContent = `${Math.round(data.daily.temperature_2m_max[0])}°/${Math.round(data.daily.temperature_2m_min[0])}° ${wmo(data.current.weather_code)[1]}`;
+    const d = data.daily;
+    $('#stat-temp').textContent = `${deg(d.temperature_2m_max[0])}/${deg(d.temperature_2m_min[0])}`;
+    $('#stat-temp-label').textContent = `${d.precipitation_probability_max[0] ?? 0}% chance of rain`;
   } else {
-    $('#stat-temp').textContent = '--';
-    $('#stat-temp-label').textContent = state.loc ? 'loading weather' : 'set location';
+    $('#stat-temp').textContent = '–';
+    $('#stat-temp-label').textContent = state.loc ? (weatherFailed ? 'weather unavailable' : 'loading weather') : 'set your location';
   }
 
   const now = Date.now();
   const timed = todays.filter((x) => !x.ev.allDay);
   const current = timed.find((x) => x.s <= now && now < x.e);
   const upcoming = timed.find((x) => x.s > now);
-  if (current) { $('#stat-next').textContent = 'Now'; $('#stat-next-label').textContent = current.ev.title; }
+  if (current) { swapText($('#stat-next'), 'Now'); $('#stat-next-label').textContent = current.ev.title; }
   else if (upcoming) {
     const mins = Math.round((upcoming.s - now) / 60000);
-    $('#stat-next').textContent = mins < 60 ? `${mins}m` : fmtTime(upcoming.s);
+    swapText($('#stat-next'), mins < 60 ? `in ${mins} min` : fmtTime(upcoming.s));
     $('#stat-next-label').textContent = upcoming.ev.title;
-  } else { $('#stat-next').textContent = '--'; $('#stat-next-label').textContent = todays.length ? 'nothing more today' : 'free day'; }
+  } else { swapText($('#stat-next'), '–'); $('#stat-next-label').textContent = todays.length ? 'nothing more today' : 'free day'; }
 }
 
+let weekAnimated = false;
 function renderWeek() {
   const wrap = $('#week-bars');
   wrap.replaceChildren();
@@ -713,11 +854,13 @@ function renderWeek() {
   const counts = days.map((d) => state.history[dayKey(d)] || 0);
   const max = Math.max(1, ...counts);
   days.forEach((d, i) => {
-    wrap.append(h('div', { class: `bar${i === 6 ? ' today' : ''}` },
+    wrap.append(h('div', { class: `bar${i === 6 ? ' today' : ''}`, style: `--h:${Math.max(4, (counts[i] / max) * 72)}px;--k:${i}` },
       h('b', {}, counts[i] || ''),
-      h('i', { style: `height:${Math.max(3, (counts[i] / max) * 70)}px` }),
+      h('i'),
       h('span', {}, d.toLocaleDateString([], { weekday: 'short' }).slice(0, 3))));
   });
+  if (weekAnimated) wrap.classList.add('go'); // later updates: no replay
+  else { weekAnimated = true; wrap.classList.remove('go'); raf2(() => wrap.classList.add('go')); }
 }
 
 /* ---------- header & lifecycle ---------- */
@@ -775,8 +918,14 @@ renderWeather();
 renderSyncStatus();
 refreshWeather();
 syncCalendar();
-if (!state.loc) setTimeout(() => { if (!state.loc && !locDialog.open) openLocation(); }, 600);
+if (!state.loc) setTimeout(() => { if (!state.loc && !locDialog.open) openLocation(); }, 900);
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').catch(() => { /* offline support is optional */ });
+  // A new version just took over: reload once so the fresh code shows straight away
+  // (unless you're in the middle of typing or a dialog is open).
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !document.querySelector('dialog[open]') && !$('#todo-input').value) location.reload();
+  });
 }
