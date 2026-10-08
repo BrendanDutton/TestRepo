@@ -390,6 +390,7 @@ function renderHero() {
   const data = currentWeather();
   if (!data) {
     hero.dataset.sky = 'default';
+    delete document.body.dataset.sky;
     $('#hero-temp').textContent = '--°';
     $('#hero-icon').textContent = '⛅';
     heroIcon = '';
@@ -400,7 +401,7 @@ function renderHero() {
   }
   const c = data.current;
   const [icon, label] = wmo(c.weather_code);
-  hero.dataset.sky = skyFor(c.weather_code, c.is_day);
+  hero.dataset.sky = document.body.dataset.sky = skyFor(c.weather_code, c.is_day);
   $('#hero-temp').textContent = deg(c.temperature_2m);
   $('#hero-desc').textContent = `${label} · feels like ${deg(c.apparent_temperature)}`;
   const el = $('#hero-icon');
@@ -919,6 +920,68 @@ renderSyncStatus();
 refreshWeather();
 syncCalendar();
 if (!state.loc) setTimeout(() => { if (!state.loc && !locDialog.open) openLocation(); }, 900);
+
+
+/* ---------- floating dock ---------- */
+// Low-end phones skip the expensive blur and use solid frosted panels instead.
+if ((navigator.deviceMemory && navigator.deviceMemory <= 2) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)) document.documentElement.classList.add('lite');
+
+const dock = $('#dock');
+const dockBtns = [...dock.querySelectorAll('button')];
+const dockPill = dock.querySelector('.dock-pill');
+let dockActive = 'hero';
+let spyLock = false, spyTimer = null;
+
+function setDock(id) {
+  const btn = dockBtns.find((b) => b.dataset.target === id);
+  if (!btn) return;
+  dockActive = id;
+  dockPill.style.setProperty('--x', `${btn.offsetLeft}px`);
+  dockPill.style.setProperty('--w', `${btn.offsetWidth}px`);
+  dockBtns.forEach((b) => { b.classList.toggle('on', b === btn); b.setAttribute('aria-current', b === btn ? 'true' : 'false'); });
+}
+
+dockBtns.forEach((btn) => btn.addEventListener('click', () => {
+  const id = btn.dataset.target;
+  spyLock = true;
+  clearTimeout(spyTimer);
+  spyTimer = setTimeout(() => { spyLock = false; }, 900); // ignore the scroll-spy while we glide there
+  setDock(id);
+  buzz(6);
+  const behavior = reduceMotion.matches ? 'auto' : 'smooth';
+  if (id === 'hero') window.scrollTo({ top: 0, behavior });
+  else document.getElementById(id).scrollIntoView({ behavior, block: 'start' });
+}));
+
+// The pill swells while a finger is on the dock.
+dock.addEventListener('pointerdown', () => dock.classList.add('press'));
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) dock.addEventListener(ev, () => dock.classList.remove('press'));
+
+// Scroll-spy: highlight the section that sits in the upper-middle of the screen.
+if ('IntersectionObserver' in window) {
+  const spy = new IntersectionObserver((entries) => {
+    if (spyLock) return;
+    for (const e of entries) if (e.isIntersecting) setDock(e.target.dataset.spy);
+  }, { rootMargin: '-38% 0px -57% 0px' });
+  for (const [sel, id] of [['#hero', 'hero'], ['#stats', 'hero'], ['#weather-card', 'weather-card'], ['#schedule-card', 'schedule-card'], ['#todo-card', 'todo-card']]) {
+    const el = $(sel);
+    el.dataset.spy = id;
+    spy.observe(el);
+  }
+  let scrollQueued = false;
+  addEventListener('scroll', () => {
+    if (scrollQueued || spyLock) return;
+    scrollQueued = true;
+    requestAnimationFrame(() => {
+      scrollQueued = false;
+      if (scrollY < 40) setDock('hero');
+      else if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) setDock('todo-card');
+    });
+  }, { passive: true });
+}
+addEventListener('resize', () => setDock(dockActive));
+addEventListener('load', () => setDock(dockActive));
+setDock('hero');
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   const hadController = !!navigator.serviceWorker.controller;

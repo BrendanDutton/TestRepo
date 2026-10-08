@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>My Day</title>
   <meta name="description" content="Daily dashboard: to-dos, calendar and weather at a glance.">
-  <meta name="theme-color" content="#f3f4f9" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0d0f15" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#e9ecf8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#090b13" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="My Day">
@@ -17,8 +17,11 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div class="aurora" aria-hidden="true"></div>
+
   <!-- Icon sprite -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v8a2 2 0 0 1-2 2h-3.5v-6h-5v6H6a2 2 0 0 1-2-2z"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
@@ -38,7 +41,7 @@
 
   <main class="app">
     <!-- Hero -->
-    <header class="hero reveal" id="hero" data-sky="default" style="--i:0">
+    <header class="hero intro" id="hero" data-sky="default" style="--i:0">
       <div class="hero-top">
         <p class="greeting" id="greeting"></p>
         <button class="glass-btn" id="refresh" aria-label="Refresh weather and calendar" title="Refresh">
@@ -62,8 +65,8 @@
     </div>
 
     <!-- Stats -->
-    <section class="stats" aria-label="Today at a glance">
-      <div class="tile reveal" style="--i:1">
+    <section class="stats" id="stats" aria-label="Today at a glance">
+      <div class="tile intro" style="--i:1">
         <div class="tile-top">
           <div class="ring-wrap">
             <svg viewBox="0 0 64 64" class="ring" aria-hidden="true">
@@ -77,7 +80,7 @@
         <div class="tile-value" id="stat-tasks-value">&ndash;</div>
         <div class="tile-label" id="stat-tasks">No tasks yet</div>
       </div>
-      <div class="tile reveal" style="--i:2">
+      <div class="tile intro" style="--i:2">
         <div class="tile-top">
           <span class="chip c-violet"><svg class="ic"><use href="#i-cal"/></svg></span>
           <span class="tile-cap">Events</span>
@@ -85,7 +88,7 @@
         <div class="tile-value" id="stat-events">0</div>
         <div class="tile-label">on today</div>
       </div>
-      <div class="tile reveal" style="--i:3">
+      <div class="tile intro" style="--i:3">
         <div class="tile-top">
           <span class="chip c-green"><svg class="ic"><use href="#i-clock"/></svg></span>
           <span class="tile-cap">Next up</span>
@@ -93,7 +96,7 @@
         <div class="tile-value" id="stat-next">&ndash;</div>
         <div class="tile-label" id="stat-next-label">next up</div>
       </div>
-      <div class="tile reveal" style="--i:4">
+      <div class="tile intro" style="--i:4">
         <div class="tile-top">
           <span class="chip c-amber"><svg class="ic"><use href="#i-drop"/></svg></span>
           <span class="tile-cap">Range</span>
@@ -113,7 +116,7 @@
     </section>
 
     <!-- Schedule -->
-    <section class="card reveal" aria-labelledby="sched-h" style="--i:6">
+    <section class="card reveal" id="schedule-card" aria-labelledby="sched-h" style="--i:6">
       <div class="card-head">
         <div class="day-nav">
           <button class="icon-btn small" id="day-prev" aria-label="Previous day"><svg class="ic"><use href="#i-left"/></svg></button>
@@ -133,7 +136,7 @@
     </section>
 
     <!-- To-do -->
-    <section class="card reveal" aria-labelledby="todo-h" style="--i:7">
+    <section class="card reveal" id="todo-card" aria-labelledby="todo-h" style="--i:7">
       <div class="card-head">
         <h2 id="todo-h"><span class="chip sm c-green"><svg class="ic"><use href="#i-check"/></svg></span>To-do</h2>
         <span class="muted small-text" id="todo-count"></span>
@@ -204,6 +207,15 @@
       </div>
     </form>
   </dialog>
+
+  <!-- Floating glass dock -->
+  <nav class="dock" id="dock" aria-label="Jump to section">
+    <span class="dock-pill" aria-hidden="true"></span>
+    <button type="button" class="on" data-target="hero" aria-label="Today"><svg class="ic"><use href="#i-home"/></svg><span>Today</span></button>
+    <button type="button" data-target="weather-card" aria-label="Weather"><svg class="ic"><use href="#i-sun"/></svg><span>Weather</span></button>
+    <button type="button" data-target="schedule-card" aria-label="Calendar"><svg class="ic"><use href="#i-cal"/></svg><span>Calendar</span></button>
+    <button type="button" data-target="todo-card" aria-label="Tasks"><svg class="ic"><use href="#i-check"/></svg><span>Tasks</span></button>
+  </nav>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>
