@@ -639,11 +639,36 @@ function dayLabel(d) {
   if (diff === -1) return 'Yesterday';
   return d.toLocaleDateString([], { weekday: 'long' });
 }
+let calMode = 'day'; // 'day' or 'week' — not saved, so the app always opens on the day view
 function goToDay(d) {
   schedDir = d > viewDay ? 1 : d < viewDay ? -1 : 0;
   viewDay = d;
-  refresh('schedule');
+  morphWidgets('schedule');
   schedDir = 0;
+}
+function setCalMode(mode, day) {
+  if (mode === calMode && !day) return;
+  if (day) viewDay = day;
+  calMode = mode;
+  buzz(8);
+  morphWidgets('schedule');
+}
+const calStep = (dir) => goToDay(addDays(viewDay, dir * (calMode === 'week' ? 7 : 1)));
+
+// Re-render a widget whose height changes: the card springs to its new height and the
+// widgets below glide out of (or into) the way instead of jumping.
+function morph(sec, item) {
+  if (reduceMotion.matches || !sec.isConnected) { updateWidget(sec, item); return; }
+  const h0 = sec.getBoundingClientRect().height;
+  if (sec.parentElement === grid) flip(() => updateWidget(sec, item), sec); else updateWidget(sec, item);
+  const h1 = sec.getBoundingClientRect().height;
+  if (Math.abs(h1 - h0) < 1) return;
+  sec.style.overflow = 'hidden';
+  sec.animate([{ height: `${h0}px` }, { height: `${h1}px` }], { duration: 650, easing: springEase() }).finished.finally(() => { sec.style.overflow = ''; });
+}
+function morphWidgets(type) {
+  for (const item of state.layout) if (item.type === type && nodeOf(item.id)) morph(nodeOf(item.id), item);
+  if (sheetItem && sheetItem.type === type) morph($('#ws-body .widget'), sheetItem);
 }
 function removeEvent(ev) {
   if (ev.rr && !confirm('This repeats. Remove every occurrence?')) return;
@@ -982,31 +1007,64 @@ W.progress = {
   },
 };
 
+const shortDate = (d) => d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+function weekLabel(start) {
+  const diff = Math.round((start - startOfDay(new Date())) / 86400000);
+  return diff === 0 ? 'This week' : diff === 7 ? 'Next week' : diff === -7 ? 'Last week' : 'Week';
+}
 W.schedule = {
-  name: 'Calendar', desc: 'Your events for today and the days ahead', icon: 'cal', chip: 'c-violet', sizes: ['full'],
+  name: 'Calendar', desc: 'Your events by day or for the whole week', icon: 'cal', chip: 'c-violet', sizes: ['full'],
   actions: () => [h('button', { class: 'w-act', 'aria-label': 'Add event', title: 'Add event', onclick: openEvent }, ic('plus'))],
   mount(body) {
+    const modeBtn = (v, label) => h('button', { type: 'button', 'data-v': v, role: 'radio', onclick: () => setCalMode(v) }, label);
     body.append(
+      h('div', { class: 'seg cal-mode', role: 'radiogroup', 'aria-label': 'Calendar view' }, modeBtn('day', 'Day'), modeBtn('week', 'Week')),
       h('div', { class: 'day-nav' },
-        h('button', { class: 'icon-btn small', 'aria-label': 'Previous day', onclick: () => goToDay(addDays(viewDay, -1)) }, ic('left')),
+        h('button', { class: 'icon-btn small cal-prev', onclick: () => calStep(-1) }, ic('left')),
         h('button', { class: 'day-label', title: 'Back to today', onclick: () => goToDay(startOfDay(new Date())) }, h('b', { class: 'dl-name' }), h('span', { class: 'dl-date muted' })),
-        h('button', { class: 'icon-btn small', 'aria-label': 'Next day', onclick: () => goToDay(addDays(viewDay, 1)) }, ic('right'))),
-      h('ul', { class: 'list sched' }),
+        h('button', { class: 'icon-btn small cal-next', onclick: () => calStep(1) }, ic('right'))),
+      h('div', { class: 'cal-view' }),
       h('p', { class: 'muted small-text sync-status' }));
   },
   update(body) {
-    swapText(body.querySelector('.dl-name'), dayLabel(viewDay));
-    swapText(body.querySelector('.dl-date'), viewDay.toLocaleDateString([], { day: 'numeric', month: 'short' }));
+    const week = calMode === 'week';
+    for (const b of body.querySelectorAll('.cal-mode button')) { const on = b.dataset.v === calMode; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); }
+    body.querySelector('.cal-prev').setAttribute('aria-label', week ? 'Previous week' : 'Previous day');
+    body.querySelector('.cal-next').setAttribute('aria-label', week ? 'Next week' : 'Next day');
+    swapText(body.querySelector('.dl-name'), week ? weekLabel(viewDay) : dayLabel(viewDay));
+    const end = addDays(viewDay, 6);
+    swapText(body.querySelector('.dl-date'), week ? new Intl.DateTimeFormat([], { day: 'numeric', month: 'short' }).formatRange(viewDay, end) : shortDate(viewDay));
     body.querySelector('.sync-status').textContent = syncStatusText();
-    const list = body.querySelector('.sched');
-    list.className = `list sched${schedDir > 0 ? ' swap-l' : schedDir < 0 ? ' swap-r' : ''}`;
-    list.replaceChildren();
+    const swap = schedDir > 0 ? ' swap-l' : schedDir < 0 ? ' swap-r' : '';
+    const view = body.querySelector('.cal-view');
+    const wasWeek = view.dataset.mode === 'week';
+    view.dataset.mode = calMode;
+    const now = Date.now();
+
+    if (week) {
+      const wrap = h('div', { class: `week${swap || (wasWeek ? '' : ' grow')}` });
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(viewDay, i), items = eventsOn(d), isToday = dayKey(d) === dayKey(new Date());
+        const rows = items.length ? items.map(({ ev, s, e }) => h('div', { class: `wk-ev${!ev.allDay && Math.max(e, s + 1) <= now ? ' past' : ''}`, style: `--ev:${evColor(ev.title)}` },
+          h('span', { class: 'wk-time' }, ev.allDay ? 'All day' : fmtTime(s)), h('span', { class: 'wk-title' }, ev.title)))
+          : [h('p', { class: 'wk-free' }, 'Free')];
+        wrap.append(h('section', { class: `wk-day${isToday ? ' today' : ''}`, style: `--i:${i}` },
+          h('button', { type: 'button', class: 'wk-head', title: 'Open this day', onclick: () => setCalMode('day', d) },
+            h('b', {}, i === 0 && isToday ? 'Today' : dayLabel(d)), h('span', { class: 'muted' }, shortDate(d)),
+            items.length ? h('span', { class: 'wk-count' }, plural(items.length, 'event')) : null),
+          ...rows));
+      }
+      view.replaceChildren(wrap);
+      return;
+    }
+
+    const list = h('ul', { class: `list sched${swap}` });
+    view.replaceChildren(list);
     const items = eventsOn(viewDay);
     if (!items.length) {
       list.append(h('li', { class: 'empty' }, dayKey(viewDay) === dayKey(new Date()) ? 'Nothing on today.' : 'Nothing on this day.'));
       return;
     }
-    const now = Date.now();
     items.forEach(({ ev, s, e }, i) => {
       const isNow = !ev.allDay && s <= now && now < e;
       const isPast = !ev.allDay && Math.max(e, s + 1) <= now;

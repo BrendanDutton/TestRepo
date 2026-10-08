@@ -566,3 +566,22 @@ dialog.closing::backdrop { animation: fadeOut 0.22s both; }
 .in-sheet { background: transparent !important; box-shadow: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; padding: 0 0 4px; animation: none !important; }
 .in-sheet .w-edit { display: none; }
 #widget-sheet .actions { justify-content: space-between; }
+
+/* ---------- Calendar: day / week ---------- */
+.cal-mode { display: flex; width: 100%; margin: -2px 0 6px; }
+.cal-mode button { flex: 1; }
+.week { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+.wk-day { border-radius: 18px; padding: 6px 12px 8px; background: var(--inset); box-shadow: var(--inset-rim); min-width: 0; }
+.wk-day.today { box-shadow: var(--inset-rim), inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 50%, transparent); }
+.wk-head { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 0 8px; background: transparent; box-shadow: none; padding: 2px 0; min-height: 36px; border-radius: 10px; text-align: left; }
+.wk-head .muted { font-size: 0.85rem; }
+.wk-count { margin-left: auto; font-size: 0.78rem; color: var(--muted); font-weight: 600; }
+.wk-ev { position: relative; display: flex; gap: 10px; align-items: baseline; padding: 4px 0 4px 12px; min-width: 0; }
+.wk-ev::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px; border-radius: 3px; background: var(--ev, var(--accent)); }
+.wk-ev.past { opacity: 0.55; }
+.wk-time { width: 4.6rem; flex: none; font-size: 0.82rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wk-title { min-width: 0; overflow-wrap: anywhere; font-weight: 560; }
+.wk-free { font-size: 0.85rem; color: var(--muted); padding: 0 0 2px; }
+.week.grow .wk-day { animation: popIn 0.7s var(--spring) both; animation-delay: calc(var(--i, 0) * 45ms); }
+.week.swap-l .wk-day { animation: slideL 0.7s var(--ease) both; animation-delay: calc(var(--i, 0) * 35ms); }
+.week.swap-r .wk-day { animation: slideR 0.7s var(--ease) both; animation-delay: calc(var(--i, 0) * 35ms); }
