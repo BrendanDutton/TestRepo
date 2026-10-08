@@ -18,9 +18,9 @@ Everything you enter is stored in the browser's `localStorage` on your device on
 The app needs to be served over HTTPS for "Add to Home Screen" and location to work.
 
 **GitHub Pages (recommended)**
-1. Merge this branch into `main`.
-2. In the repo go to *Settings → Pages* and set *Source* to **GitHub Actions**.
-3. The included workflow publishes the app; open `https://<user>.github.io/<repo>/` on your phone.
+1. In the repo go to *Settings → Pages*, set *Source* to **Deploy from a branch**, choose branch **main** and folder **/ (root)**, and save.
+2. After a minute the app is live at `https://<user>.github.io/<repo>/`. Open that on your phone.
+3. Updates: push to `main` and Pages redeploys automatically.
 4. **Android (Chrome):** tap the **Install** banner at the top of the app (or menu ⋮ → **Install app**). It gets a home-screen icon and opens full-screen like any other app.
 5. When Chrome asks for location, choose **Allow** so the weather follows you as you move.
    (iPhone: Safari → Share → Add to Home Screen.)
