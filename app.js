@@ -109,6 +109,12 @@ const PRESET_INFO = [
 ];
 const makeLayout = (name) => PRESETS[name].map(([type, size]) => ({ id: uid(), type, size }));
 
+// Starter habits most people find useful (anyone can delete them), plus extra ideas
+// offered under "Need ideas?" in the Habits widget.
+const DEFAULT_HABITS = ['💧 Drink 8 glasses of water', '🚶 Move for 20 minutes', '📖 Read for 10 minutes', '😴 Get 7–8 hours of sleep'];
+const HABIT_IDEAS = ['🧘 Breathe or stretch for 5 minutes', '🥦 Eat fruit or veg with every meal', '🌳 Get outside for some fresh air', '📵 No screens 30 min before bed',
+  '🙏 Write down 3 good things', '🦷 Floss', '🛏️ Make your bed', '🧹 10-minute tidy-up', '💊 Take your vitamins', '📞 Message a friend or family member'];
+
 const defaults = () => ({
   tasks: [],      // {id, text, done, doneAt}
   events: [],     // {id, title, start, end, allDay, src, rr}
@@ -140,6 +146,11 @@ function load() {
   for (const hb of s.habits) for (const k of Object.keys(hb.days || {})) if (k < cutoff) delete hb.days[k];
   for (const k of Object.keys(s.focus.done || {})) if (k < cutoff) delete s.focus.done[k];
   if (!Array.isArray(s.layout)) s.layout = makeLayout('essentials');
+  // Give everyone the starter habits once. If they later delete them all, they stay deleted.
+  if (!s.habitsSeeded) {
+    if (!s.habits.length) s.habits = DEFAULT_HABITS.map((name) => ({ id: uid(), name, days: {} }));
+    s.habitsSeeded = true;
+  }
   return s;
 }
 let state = load();
@@ -1059,12 +1070,28 @@ W.habits = {
       h('form', { class: 'add-row', autocomplete: 'off', onsubmit: (e) => {
         e.preventDefault(); const v = input.value.trim(); if (!v) return; input.value = '';
         state.habits.push({ id: uid(), name: v, days: {} }); save(); refresh('habits');
-      } }, input, h('button', { type: 'submit', class: 'primary', 'aria-label': 'Add habit' }, ic('plus'))));
+      } }, input, h('button', { type: 'submit', class: 'primary', 'aria-label': 'Add habit' }, ic('plus'))),
+      h('button', { type: 'button', class: 'ideas-btn', 'aria-expanded': 'false', onclick: (e) => {
+        const box = body.querySelector('.habit-ideas'), open = box.hidden;
+        box.hidden = !open;
+        e.currentTarget.setAttribute('aria-expanded', String(open));
+        e.currentTarget.lastChild.textContent = open ? 'Hide ideas' : 'Need ideas?';
+      } }, ic('star', 'ic sm'), h('span', {}, 'Need ideas?')),
+      h('div', { class: 'habit-ideas', hidden: true }));
   },
   update(body) {
+    // Suggestions you don't already have; tap one to add it.
+    const have = new Set(state.habits.map((x) => x.name.toLowerCase()));
+    const ideas = [...DEFAULT_HABITS, ...HABIT_IDEAS].filter((n) => !have.has(n.toLowerCase()));
+    body.querySelector('.habit-ideas').replaceChildren(...ideas.map((name) => h('button', { type: 'button', class: 'idea', onclick: () => {
+      state.habits.push({ id: uid(), name, days: {} }); buzz(8); save(); refresh('habits');
+    } }, ic('plus', 'ic sm'), name)));
+    body.querySelector('.ideas-btn').hidden = !ideas.length;
+    if (!ideas.length) body.querySelector('.habit-ideas').hidden = true;
+
     const list = body.querySelector('.habit-list');
     list.replaceChildren();
-    if (!state.habits.length) { list.append(h('li', { class: 'empty' }, 'Add a habit you want to do every day.')); return; }
+    if (!state.habits.length) { list.append(h('li', { class: 'empty' }, 'Add a habit you want to do every day, or tap “Need ideas?”.')); return; }
     const today = dayKey(new Date());
     for (const hb of state.habits) {
       const doneToday = !!hb.days[today];

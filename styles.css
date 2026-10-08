@@ -361,6 +361,11 @@ h1 { font-size: clamp(1.6rem, 7.4vw, 2.1rem); font-weight: 760; letter-spacing: 
 .dots i.on { background: #f59e0b; box-shadow: none; }
 .streak { font-size: 0.85rem; font-weight: 700; flex: none; }
 .habit-list + .add-row { margin-top: 8px; }
+.ideas-btn { background: transparent; box-shadow: none; color: var(--accent); font-weight: 650; font-size: 0.9rem; padding: 6px 8px; min-height: 40px; margin-top: 2px; }
+.ideas-btn:active { background: var(--inset); }
+.habit-ideas { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; animation: dropIn 0.5s var(--spring) both; }
+.idea { min-height: 38px; padding: 6px 12px 6px 10px; font-size: 0.86rem; font-weight: 550; gap: 6px; text-align: left; max-width: 100%; overflow-wrap: anywhere; }
+.idea .ic { color: var(--accent); }
 
 /* ---------- Air & UV ---------- */
 .air-big { font-size: 2.2rem; font-weight: 720; letter-spacing: -0.03em; line-height: 1.1; display: flex; align-items: center; flex-wrap: wrap; gap: 0 8px; font-variant-numeric: tabular-nums; }
