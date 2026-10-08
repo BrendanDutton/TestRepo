@@ -6,7 +6,14 @@ const pad = (n) => String(n).padStart(2, '0');
 const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
-const fmtTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+// Times: "9:05 am" / "12 pm" (or "09:05" / "12:00" when 24-hour is chosen in Settings).
+const use24 = () => typeof state !== 'undefined' && state.clock === '24';
+function fmtHM(H, M, hourOnly = false) {
+  if (use24()) return `${String(H).padStart(2, '0')}:${String(hourOnly ? 0 : M).padStart(2, '0')}`;
+  const h12 = H % 12 || 12, ap = H < 12 ? 'am' : 'pm';
+  return hourOnly ? `${h12} ${ap}` : `${h12}:${String(M).padStart(2, '0')} ${ap}`;
+}
+const fmtTime = (ms) => { const d = new Date(ms); return fmtHM(d.getHours(), d.getMinutes()); };
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 // Build a DOM node; text is always set via textContent/append so imported
@@ -127,6 +134,7 @@ const defaults = () => ({
   sync: null,     // {url, at}: Google Calendar relay link and last successful sync
   layout: null,   // [{id, type, size}]
   theme: 'auto',
+  clock: '12',    // '12' (am/pm) or '24'
   tipSeen: false,
   habits: [],     // {id, name, days: {dayKey: 1}}
   countdowns: [], // {id, title, date: 'YYYY-MM-DD'}
@@ -367,7 +375,12 @@ function rel(ms) {
   return mm ? `${hr} h ${mm} min` : `${hr} h`;
 }
 // Wall-clock time of an Open-Meteo local timestamp ("2026-10-08T06:12"), shown as written.
-const fmtWall = (iso, opts = { hour: 'numeric', minute: '2-digit' }) => new Date(iso).toLocaleTimeString([], opts);
+const fmtWall = (iso, hourOnly = false) => { const d = new Date(iso); return fmtHM(d.getHours(), d.getMinutes(), hourOnly); };
+// The time right now in another time zone.
+function fmtInZone(ms, tz) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', hour: 'numeric', minute: 'numeric' }).formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return fmtHM(+p.hour % 24, +p.minute);
+}
 // Absolute time of an Open-Meteo local timestamp, using the location's UTC offset.
 const locMs = (data, iso) => Date.parse(`${iso.length === 10 ? `${iso}T00:00` : iso}Z`) - (data.utc_offset_seconds || 0) * 1000;
 const notice = (text, ...extra) => h('div', { class: 'notice' }, h('p', {}, text), ...extra);
@@ -893,7 +906,7 @@ W.hourly = {
     for (let i = start; i < Math.min(start + 12, d.hourly.time.length); i++) {
       const p = d.hourly.precipitation_probability[i];
       strip.append(h('div', { class: 'hour' },
-        h('span', {}, i === start ? 'Now' : fmtWall(d.hourly.time[i], { hour: 'numeric' })),
+        h('span', {}, i === start ? 'Now' : fmtWall(d.hourly.time[i], true)),
         h('span', { class: 'h-ico', 'aria-hidden': 'true' }, wmo(d.hourly.weather_code[i])[0]),
         h('b', {}, deg(d.hourly.temperature_2m[i])),
         h('span', { class: `h-rain${p >= 30 ? ' likely' : ''}`, title: 'Chance of rain' }, `💧${p ?? 0}%`)));
@@ -1172,7 +1185,7 @@ W.clocks = {
       const diffTxt = diff === 0 ? 'Same time' : `${diff > 0 ? '+' : '−'}${Math.abs(diff) % 1 ? Math.abs(diff).toFixed(1) : Math.abs(diff)}\u00a0h`;
       list.append(h('li', {},
         h('div', { class: 'clock-body' }, h('span', { class: 'clock-city' }, cityOf(c.tz)), h('span', { class: 'muted small-text' }, `${dayWord}, ${diffTxt}`)),
-        h('span', { class: 'clock-time' }, new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: c.tz })),
+        h('span', { class: 'clock-time' }, fmtInZone(now, c.tz)),
         h('button', { class: 'x-btn', 'aria-label': `Remove ${cityOf(c.tz)}`, onclick: () => { state.clocks = state.clocks.filter((x) => x !== c); save(); refresh('clocks'); } }, ic('x'))));
     }
     body.append(list);
@@ -1539,7 +1552,7 @@ function openAdd() {
 /* ---------- Settings ---------- */
 const settingsDialog = $('#settings-dialog');
 function renderSettings() {
-  for (const [id, val] of [['#set-unit', state.unit], ['#set-theme', state.theme]]) {
+  for (const [id, val] of [['#set-unit', state.unit], ['#set-theme', state.theme], ['#set-clock', state.clock]]) {
     for (const b of $(id).children) { const on = b.dataset.v === val; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); }
   }
   $('#set-loc').textContent = state.loc ? state.loc.name || 'Set' : 'Not set';
@@ -1553,6 +1566,12 @@ $('#set-unit').addEventListener('click', (e) => {
   state.unit = v; save(); renderSettings();
   refresh('weather', 'hourly', 'daily', 'sun', 'air'); renderSummary();
   fetchWeather(true);
+});
+$('#set-clock').addEventListener('click', (e) => {
+  const v = e.target.closest('button')?.dataset.v;
+  if (!v || v === state.clock) return;
+  state.clock = v; save(); renderSettings();
+  refresh(...ORDER); renderSummary(); renderSyncStatus();
 });
 $('#set-theme').addEventListener('click', (e) => {
   const v = e.target.closest('button')?.dataset.v;
