@@ -1479,7 +1479,7 @@ function smoothScrollTo(y) {
 // A springy "here I am" bounce plus a soft glow.
 function bounce(el) {
   if (reduceMotion.matches) return;
-  el.animate([{ scale: 1 }, { scale: 1.045, offset: 0.28 }, { scale: 0.985, offset: 0.55 }, { scale: 1.012, offset: 0.78 }, { scale: 1 }], { duration: 900, easing: 'cubic-bezier(.3,.7,.4,1)' });
+  el.animate([{ top: '0px' }, { top: '-14px', offset: 0.3 }, { top: '5px', offset: 0.56 }, { top: '-2px', offset: 0.78 }, { top: '0px' }], { duration: 850, easing: 'ease-out' });
   el.classList.remove('w-flash'); void el.offsetWidth; el.classList.add('w-flash');
   setTimeout(() => el.classList.remove('w-flash'), 1500);
 }
@@ -1522,7 +1522,8 @@ const revealObs = 'IntersectionObserver' in window ? new IntersectionObserver((e
   }
 }, { rootMargin: '0px 0px -8% 0px' }) : null;
 grid.addEventListener('animationend', (e) => {
-  if (e.target.parentElement === grid) e.target.classList.remove('intro', 'revealed', 'w-enter', 'w-swap');
+  const sec = e.target.parentElement;
+  if (sec && sec.parentElement === grid && e.target.classList.contains('w-body')) sec.classList.remove('intro', 'revealed', 'w-enter', 'w-swap');
 });
 function updateEmpty() { $('#empty-screen').hidden = state.layout.length > 0; }
 
@@ -1537,7 +1538,7 @@ function flip(mutate, skip) {
     const a = el.getBoundingClientRect();
     const dx = b.left - a.left, dy = b.top - a.top;
     if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-      el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 650, easing: springEase() });
+      el.animate([{ left: `${dx}px`, top: `${dy}px` }, { left: '0px', top: '0px' }], { duration: 650, easing: springEase() });
     }
   }
 }
@@ -1573,7 +1574,7 @@ function removeWidget(id) {
   const sec = nodeOf(id);
   const done = () => { flip(() => sec.remove()); updateEmpty(); };
   if (reduceMotion.matches) done();
-  else sec.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(0.9)' }], { duration: 220, easing: 'ease-in', fill: 'forwards' }).finished.then(done);
+  else Promise.all([...sec.children].map((k) => k.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-in', fill: 'forwards' }).finished)).then(done, done);
   buzz(8);
   toast(`${W[item.type].name} removed`, { label: 'Undo', fn: () => { state.layout.splice(idx, 0, item); save(); insertWidget(item); } });
 }
@@ -1635,10 +1636,14 @@ function startDrag(e, sec) {
 }
 function placeDragged() {
   const { sec } = drag;
-  sec.style.transform = 'none';
+  sec.style.left = '0px'; sec.style.top = '0px';
   const base = sec.getBoundingClientRect();
-  sec.style.transform = `translate(${drag.x - drag.offX - base.left}px, ${drag.y - drag.offY - base.top}px) scale(1.03)`;
+  sec.style.left = `${drag.x - drag.offX - base.left}px`;
+  sec.style.top = `${drag.y - drag.offY - base.top}px`;
 }
+// A widget's resting place in the grid, ignoring any slide it's currently doing.
+const restLeft = (el) => el.offsetLeft - (parseFloat(getComputedStyle(el).left) || 0);
+const restTop = (el) => el.offsetTop - (parseFloat(getComputedStyle(el).top) || 0);
 function dragFrame() {
   if (!drag) return;
   placeDragged();
@@ -1648,7 +1653,8 @@ function dragFrame() {
   const from = kids.indexOf(drag.sec);
   for (const el of kids) {
     if (el === drag.sec) continue;
-    const inside = px >= el.offsetLeft && px <= el.offsetLeft + el.offsetWidth && py >= el.offsetTop && py <= el.offsetTop + el.offsetHeight;
+    const l = restLeft(el), t = restTop(el);
+    const inside = px >= l && px <= l + el.offsetWidth && py >= t && py <= t + el.offsetHeight;
     if (!inside) continue;
     const to = kids.indexOf(el);
     flip(() => grid.insertBefore(drag.sec, to > from ? el.nextSibling : el), drag.sec);
@@ -1670,11 +1676,11 @@ function endDrag() {
   if (!drag) return;
   const { sec } = drag;
   cancelAnimationFrame(drag.raf);
-  const from = sec.style.transform;
-  sec.style.transform = '';
+  const from = { left: sec.style.left || '0px', top: sec.style.top || '0px' };
+  sec.style.left = ''; sec.style.top = '';
   sec.classList.remove('dragging');
   document.body.classList.remove('is-dragging');
-  if (!reduceMotion.matches) sec.animate([{ transform: from }, { transform: 'none' }], { duration: 600, easing: springEase() });
+  if (!reduceMotion.matches) sec.animate([from, { left: '0px', top: '0px' }], { duration: 600, easing: springEase() });
   const byId = new Map(state.layout.map((x) => [x.id, x]));
   state.layout = [...grid.children].map((el) => byId.get(el.dataset.id)).filter(Boolean);
   drag = null;
@@ -1711,7 +1717,11 @@ function openAdd() {
     return h('li', {},
       h('span', { class: `chip ${def.chip || ''}` }, ic(def.icon)),
       h('div', { class: 'wl-text' }, h('b', {}, def.name), h('span', {}, def.desc)),
-      on ? h('span', { class: 'wl-on' }, ic('check', 'ic sm'), 'Added')
+      on ? h('button', { type: 'button', class: 'wl-remove', 'aria-label': `Remove ${def.name}`, onclick: () => {
+        const it = state.layout.find((i) => i.type === type);
+        closeDlg(addDialog);
+        if (it) removeWidget(it.id);
+      } }, 'Remove')
         : h('button', { type: 'button', class: 'primary', 'aria-label': `Add ${def.name}`, onclick: () => { closeDlg(addDialog); addWidget(type); } }, 'Add'));
   }));
   addDialog.showModal();
